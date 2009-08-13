@@ -9,7 +9,7 @@ begin
     gem.email = "hayeah@gmail.com"
     gem.homepage = "http://github.com/hayeah/ass"
     gem.authors = ["Howard Yeh"]
-    gem.add_dependency "mq"
+    gem.add_dependency "amqp"
     gem.files = FileList["[A-Z]*", "{lib,test}/**/*"]
     # gem is a Gem::Specification... see http://www.rubygems.org/read/chapter/20 for additional settings
   end

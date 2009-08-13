@@ -13,6 +13,7 @@ Gem::Specification.new do |s|
     "README.textile"
   ]
   s.files = [
+    "ASS.gemspec",
     "LICENSE",
     "README.textile",
     "Rakefile",
@@ -37,11 +38,11 @@ Gem::Specification.new do |s|
     s.specification_version = 2
 
     if Gem::Version.new(Gem::RubyGemsVersion) >= Gem::Version.new('1.2.0') then
-      s.add_runtime_dependency(%q<mq>, [">= 0"])
+      s.add_runtime_dependency(%q<amqp>, [">= 0"])
     else
-      s.add_dependency(%q<mq>, [">= 0"])
+      s.add_dependency(%q<amqp>, [">= 0"])
     end
   else
-    s.add_dependency(%q<mq>, [">= 0"])
+    s.add_dependency(%q<amqp>, [">= 0"])
   end
 end
