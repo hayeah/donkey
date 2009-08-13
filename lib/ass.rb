@@ -1,5 +1,5 @@
 require 'mq'
-class Ass
+class ASS
   
   attr_reader :server_exchange
 
