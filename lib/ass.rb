@@ -84,7 +84,9 @@ module ASS
     # takes options available to MQ::Queue
     def queue(opts={})
       unless @queue
-        @queue ||= MQ.queue(@key || self.name,opts)
+        # if key is not given, the queue name is
+        # the same as the exchange name.
+        @queue ||= MQ.queue("#{self.name}#{@key}",opts)
         @queue.bind(self.exchange,:routing_key => @key || self.name)
       end
       self # return self to allow chaining
@@ -158,7 +160,7 @@ module ASS
     end
 
     def client_name
-      "#{self.exchange.name}---client"
+      "#{self.exchange.name}--"
     end
 
     def queue(opts={})
@@ -168,8 +170,6 @@ module ASS
       end
       self
     end
-
-    
 
     def react(callback=nil,opts=nil,&block)
       if block
