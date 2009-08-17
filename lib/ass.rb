@@ -137,6 +137,10 @@ module ASS
       end
       self
     end
+
+    def inspect
+      "#<#{self.class} #{self.name}>"
+    end
   end
 
   class Client
@@ -214,6 +218,10 @@ module ASS
     def cast(method,data=nil,meta=nil,opts={})
       self.call(method,data,meta,opts.merge({:reply_to => nil}))
     end
+
+    def inspect
+      "#<#{self.class} #{self.name}>"
+    end
   end
 
   # assumes server initializes it with an exclusive and auto_delete queue.
@@ -226,16 +234,17 @@ module ASS
     # hmmm. I guess deferrable is a better idea.
     class Future
       attr_reader :message_id
-      attr_accessor :header, :data, :meta
+      attr_accessor :header, :data, :meta, :timeout
       def initialize(rpc,message_id)
         @message_id = message_id
         @rpc = rpc
+        @timeout = false
         @done = false
       end
       
-      def wait(time=nil,&block)
+      def wait(timeout=nil,&block)
         # TODO timeout with eventmachine
-        @rpc.wait(self) # synchronous call that will block
+        @rpc.wait(self,timeout,&block) # synchronous call that will block
         # EM.cancel_timer(ticket)
       end
 
@@ -245,6 +254,10 @@ module ASS
 
       def done?
         @done
+      end
+
+      def timeout?
+        @timeout
       end
 
       def inspect
@@ -279,8 +292,8 @@ module ASS
     end
 
     def call(method,data,meta=nil,opts={})
-      message_id = @seq.to_s
-      @client.call method, data, meta, opts.merge(:message_id => message_id) 
+      message_id = @seq.to_s # message gotta be unique for this RPC client.
+      @client.call method, data, meta, opts.merge(:message_id => message_id)
       @seq += 1
       @futures[message_id] = Future.new(self,message_id)
     end
@@ -291,22 +304,41 @@ module ASS
     # WARNING: blocks forever if the thread
     # calling wait is the same as the EventMachine
     # thread.
-    def wait(future)
+    def wait(future,timeout=nil)
       return future.data if future.done? # future was waited before
+      timer = nil
+      if timeout
+        timer = EM.add_timer(timeout) {
+          @buffer << [:timeout,future.message_id,nil]
+        }
+      end
       ready_future = nil
       if @ready.has_key? future.message_id
         @ready.delete future.message_id
         ready_future = future
       else
         while true
-          header,data,meta = data = @buffer.pop # synchronize
+          header,data,meta = data = @buffer.pop # synchronize. like erlang's mailbox select.
+          if header == :timeout # timeout the future we are waiting for.
+            message_id = data
+            # if we got a timeout from previous wait. throw it away.
+            next if future.message_id != message_id 
+            future.timeout = true
+            future.done!
+            @futures.delete future.message_id
+            return yield # return the value of timeout block
+          end
           some_future = @futures[header.message_id]
-          raise "Can't find registered future" unless some_future
+          # If we didn't find the future among the
+          # future, it must have timedout. Just
+          # throw result away and keep processing.
+          next unless some_future 
           some_future.header = header
           some_future.data = data
           some_future.meta = meta
           if some_future == future
             # The future we are waiting for
+            EM.cancel_timer(timer)
             ready_future = future
             break
           else
@@ -324,6 +356,10 @@ module ASS
       @futures.values.map { |k,v|
         wait(v)
       }
+    end
+
+    def inspect
+      "#<#{self.class} #{self.name}>"
     end
   end
   
