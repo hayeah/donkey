@@ -15,46 +15,59 @@ module ASS
   end
   
   module Callback
-    def build_callback_klass(callback)
-      case callback
-      when Proc
-        Class.new &callback
-      when Class
-        callback
-      when Module
-        Class.new { include callback }
+    module MagicMethods
+      def header
+        @__header__
       end
+      
+      def meta
+        @__meta__
+      end
+      
+      def service
+        @__service__
+      end
+      
+      def call(method,data=nil,meta=nil,opts={})
+        @__service__.call(method,data,meta,opts)
+      end
+    end
+    
+    def set_callback(callback)
+      c = case callback
+          when Proc
+            Class.new &callback
+          when Class
+            callback
+          when Module
+            Class.new { include callback }
+          when Object
+            callback # use singleton objcet as callback
+          end
+      case @callback = c
+      when Class
+        @callback.instance_eval { include MagicMethods }
+      else
+        @callback.extend MagicMethods
+      end
+      @callback
     end
     
     def callback(info,payload)
       # method,data,meta
-      if @callback_klass.respond_to? :version
-        klass = @callback_klass.get_version(payload[:version])
+      if @callback.is_a? Class
+        if @callback.respond_to? :version
+          klass = @callback.get_version(payload[:version])
+        else
+          klass = @callback
+        end
+        obj = klass.new
       else
-        klass = @callback_klass
+        obj = @callback
       end
-      obj = klass.new
-      service = self
-      obj.instance_variable_set("@__service__",service)
+      obj.instance_variable_set("@__service__",self)
       obj.instance_variable_set("@__header__",info)
       obj.instance_variable_set("@__meta__",payload[:meta])
-      class
-        def header
-          @__header__
-        end
-
-        def meta
-          @__meta__
-        end
-        
-        def service
-          @__service__
-        end
-
-        def call(method,data=nil,meta=nil,opts={})
-          @__service__.call(method,data,meta,opts)
-        end
-      end
       #p [:call,payload]
       obj.send(payload[:method],
                payload[:data])
@@ -99,7 +112,7 @@ module ASS
       end
       opts = {} if opts.nil?
       
-      @callback_klass = build_callback_klass(callback)
+      set_callback(callback)
       @ack = opts[:ack]
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
@@ -157,7 +170,7 @@ module ASS
       end
       opts = {} if opts.nil?
       
-      @callback_klass = build_callback_klass(callback)
+      set_callback(callback)
       @ack = opts[:ack]
       # ensure queue is set
       self.queue unless @queue
