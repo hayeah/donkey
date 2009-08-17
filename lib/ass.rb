@@ -1,66 +1,20 @@
 require 'mq'
-class ASS
+
+# TODO convert to JSON msgs
+module ASS
   
   attr_reader :server_exchange
 
-  def self.declare(server_exchange)
-    self.new([server_exchange,{:passive => true}])
+  # non-destructive get. Fail if server's not started.
+  def self.get(name)
+    ASS::Server.new(name,:passive => true)
+  end
+
+  def self.new(name,opts={})
+    ASS::Server.new(name)
   end
   
-  # uh... we'll assume that the exchanges are all direct exchanges.
-  def initialize(server_exchange)
-    @server_exchange = get_exchange(server_exchange)
-  end
-
-  def client(client_exchange,*args)
-    @client_exchange ||= get_exchange(client_exchange)
-    q = get_queue(@client_exchange,*args) 
-    Client.new(@server_exchange,@client_exchange,q)
-  end
-
-  def server(*args)
-    Server.new(@server_exchange,get_queue(@server_exchange,*args))
-  end
-
-  def get_exchange(arg)
-    case arg
-    when Array
-      exchanges = exchange[0]
-      opts = exchange[1]
-    else
-      exchange = arg
-      opts = nil
-    end
-    opts = {} if opts.nil?
-    exchange = exchange.is_a?(MQ::Exchange) ? exchange : MQ.direct(exchange,opts)
-    raise "accepts only direct exchanges" unless exchange.type == :direct
-    exchange
-  end
-
-  # can specify a key to create a queue for that subdomain
-  def get_queue(exchange,*args)
-    case args[0]
-    when Hash
-      key = nil
-      opts = args[0]
-    when String
-      key = args[0]
-      opts = args[1]
-    end
-    opts = {} if opts.nil?
-    if key
-      name = "#{exchange.name}--#{key}"
-      q = MQ.queue(name,opts)
-      q.bind(exchange,{ :routing_key => key})
-    else
-      q = MQ.queue(exchange.name,opts)
-      q.bind(exchange,{ :routing_key => exchange.name })
-    end
-    q
-  end
-
   module Callback
-
     def build_callback_klass(callback)
       case callback
       when Proc
@@ -109,12 +63,34 @@ class ASS
 
   class Client
     include Callback
-    def initialize(server_exchange,client_exchange,queue)
-      @server_exchange = server_exchange
-      @client_exchange = client_exchange
-      @queue = queue
+
+    # takes options available to MQ::Exchange
+    def initialize(server,opts={})
+      @server = server
+      # the routing key is also used as the name of the client
+      @key = opts.delete :key
+      @key = @key.to_s if @key
+      @client_exchange = MQ.direct @server.client_name, opts
     end
-    
+
+    def name
+      self.exchange.name
+    end
+
+    def exchange
+      @client_exchange
+    end
+
+    # takes options available to MQ::Queue
+    def queue(opts={})
+      unless @queue
+        @queue ||= MQ.queue(@key || self.name,opts)
+        @queue.bind(self.exchange,:routing_key => @key || self.name)
+      end
+      self # return self to allow chaining
+    end
+
+    # takes options available to MQ::Queue#subscribe
     def react(callback=nil,opts=nil,&block)
       if block
         opts = callback
@@ -124,6 +100,8 @@ class ASS
       
       @callback_klass = build_callback_klass(callback)
       @ack = opts[:ack]
+      # ensure queue is set
+      self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
         payload = ::Marshal.load(payload)
         callback(info,payload)
@@ -131,7 +109,9 @@ class ASS
       end
       self
     end
-    
+
+    # note that we can redirect the result to some
+    # place else by setting :key and :reply_to
     def call(method,data=nil,meta=nil,opts={})
       # opts passed to publish
       # if no routing key is given, use receiver's name as the routing key.
@@ -143,16 +123,13 @@ class ASS
         :version => version
       }
 
-      # set it up s.t. server would respond to
-      # private queue if key is given, otherwise
-      # the server would respond to public queue.
-      key = opts.delete(:key)
-      @server_exchange.publish Marshal.dump(payload), {
-        :key => (key ? key : @server_exchange.name),
-        :reply_to => @client_exchange.name
+      @server.exchange.publish Marshal.dump(payload), {
+        # opts[:routing_key] will override :key in MQ::Exchange#publish
+        :key => (@key ? @key : self.name),
+        :reply_to => self.name
       }.merge(opts)
     end
-
+    
     # for casting, just null the reply_to field, so server doesn't respond.
     def cast(method,data=nil,meta=nil,opts={})
       self.call(method,data,meta,opts.merge({:reply_to => nil}))
@@ -164,15 +141,35 @@ class ASS
   class Server
     include Callback
 
-    def initialize(server_exchange,q)
-      @queue = q
-      @server_exchange = server_exchange
+    def initialize(name,opts={})
+      @server_exchange = MQ.fanout(name,opts)
     end
 
-    attr_reader :queue
+    def name
+      self.exchange.name
+    end
+    
     def exchange
       @server_exchange
     end
+
+    def client(opts={})
+      ASS::Client.new(self,opts)
+    end
+
+    def client_name
+      "#{self.exchange.name}---client"
+    end
+
+    def queue(opts={})
+      unless @queue
+        @queue ||= MQ.queue(self.name,opts)
+        @queue.bind(self.exchange)
+      end
+      self
+    end
+
+    
 
     def react(callback=nil,opts=nil,&block)
       if block
@@ -183,21 +180,17 @@ class ASS
       
       @callback_klass = build_callback_klass(callback)
       @ack = opts[:ack]
+      self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
         payload = ::Marshal.load(payload)
         #p [info,info.reply_to,payload]
         data2 = callback(info,payload)
         payload2 = payload.merge :data => data2
-        if info.routing_key == @server_exchange.name
-          # addressed to the server's public
-          # queue, respond to the routing_key of
-          # the client's public queue.
-          key = info.reply_to
-        else
-          # addressed to the private queue
-          key = info.routing_key
-        end
-        MQ.direct(info.reply_to).publish(::Marshal.dump(payload2),:routing_key => key) if info.reply_to
+        # the client MUST exist, otherwise it's an error.
+        ## FIXME it's bad if the server dies b/c the client isn't there.
+        MQ.direct(info.reply_to,:passive => true).
+          publish(::Marshal.dump(payload2),
+                  :routing_key => info.routing_key) if info.reply_to
         info.ack if @ack
       end
       self
