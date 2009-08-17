@@ -32,8 +32,9 @@ module ASS
         @__service__.call(method,data,meta,opts)
       end
     end
-    
-    def set_callback(callback)
+
+    # called to initiate a callback
+    def build_callback(callback)
       c = case callback
           when Proc
             Class.new &callback
@@ -44,33 +45,33 @@ module ASS
           when Object
             callback # use singleton objcet as callback
           end
-      case @callback = c
+      case c
       when Class
-        @callback.instance_eval { include MagicMethods }
+        c.instance_eval { include MagicMethods }
       else
-        @callback.extend MagicMethods
+        c.extend MagicMethods
       end
-      @callback
+      c
     end
-    
-    def callback(info,payload)
+
+    # called for each request
+    def prepare_callback(callback,info,payload)
       # method,data,meta
-      if @callback.is_a? Class
-        if @callback.respond_to? :version
-          klass = @callback.get_version(payload[:version])
+      if callback.is_a? Class
+        if callback.respond_to? :version
+          klass = callback.get_version(payload[:version])
         else
-          klass = @callback
+          klass = callback
         end
         obj = klass.new
       else
-        obj = @callback
+        obj = callback
       end
       obj.instance_variable_set("@__service__",self)
       obj.instance_variable_set("@__header__",info)
       obj.instance_variable_set("@__meta__",payload[:meta])
       #p [:call,payload]
-      obj.send(payload[:method],
-               payload[:data])
+      obj
     end
   end
 
@@ -119,16 +120,19 @@ module ASS
       end
       opts = {} if opts.nil?
       
-      set_callback(callback)
+      @callback = build_callback(callback)
       @ack = opts[:ack]
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
         payload = ::Marshal.load(payload)
         #p [info,info.reply_to,payload]
-        data2 = callback(info,payload)
+        obj = prepare_callback(@callback,info,payload)
+        data2 = obj.send(payload[:method],payload[:data])
         payload2 = payload.merge :data => data2
         # the client MUST exist, otherwise it's an error.
-        ## FIXME it's bad if the server dies b/c the client isn't there.
+        ## FIXME it's bad if the server dies b/c
+        ## the client isn't there. It's bad that
+        ## this can cause the server to fail.
         MQ.direct(info.reply_to,:passive => true).
           publish(::Marshal.dump(payload2),
                   :routing_key => info.routing_key,
@@ -181,14 +185,15 @@ module ASS
         callback = block
       end
       opts = {} if opts.nil?
-      
-      set_callback(callback)
+
+      @callback = build_callback(callback)
       @ack = opts[:ack]
       # ensure queue is set
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
         payload = ::Marshal.load(payload)
-        callback(info,payload)
+        obj = prepare_callback(@callback,info,payload)
+        obj.send(payload[:method],payload[:data])
         info.ack if @ack
       end
       self
@@ -360,12 +365,6 @@ module ASS
 
     def inspect
       "#<#{self.class} #{self.name}>"
-    end
-  end
-  
-  class Peeper
-    def initialize(exchange,callback)
-      # create a temporary queue that binds to an exchange
     end
   end
 end
