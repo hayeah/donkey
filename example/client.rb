@@ -14,6 +14,7 @@ AMQP.start(:host => 'localhost',
   c_keyed = s.client(:key => "unique-#{Process.pid}").
     queue(:auto_delete => true).react {
     def foo(data)
+      #p [:header,header]
       p [:u,Process.pid,data]
     end
   }

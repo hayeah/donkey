@@ -89,12 +89,18 @@ module ASS
       @server_exchange
     end
 
+    # takes options available to MQ::Exchange
     def client(opts={})
       ASS::Client.new(self,opts)
     end
 
     def client_name
       "#{self.exchange.name}--"
+    end
+
+    # takes options available to MQ::Queue# takes options available to MQ::Queue#subscribe
+    def rpc(opts={})
+      ASS::RPC.new(self,opts)
     end
 
     def queue(opts={})
@@ -105,6 +111,7 @@ module ASS
       self
     end
 
+    # takes options available to MQ::Queue# takes options available to MQ::Queue#subscribe
     def react(callback=nil,opts=nil,&block)
       if block
         opts = callback
@@ -124,7 +131,8 @@ module ASS
         ## FIXME it's bad if the server dies b/c the client isn't there.
         MQ.direct(info.reply_to,:passive => true).
           publish(::Marshal.dump(payload2),
-                  :routing_key => info.routing_key) if info.reply_to
+                  :routing_key => info.routing_key,
+                  :message_id => info.message_id) if info.reply_to
         info.ack if @ack
       end
       self
@@ -205,6 +213,117 @@ module ASS
     # for casting, just null the reply_to field, so server doesn't respond.
     def cast(method,data=nil,meta=nil,opts={})
       self.call(method,data,meta,opts.merge({:reply_to => nil}))
+    end
+  end
+
+  # assumes server initializes it with an exclusive and auto_delete queue.
+  # TODO timeout
+  class RPC
+    require 'thread'
+
+    # i don't want deferrable. I want actual blockage when waiting.
+    ## subscribe prolly run in a different thread.
+    # hmmm. I guess deferrable is a better idea.
+    class Future
+      attr_reader :message_id
+      attr_accessor :header, :data, :meta
+      def initialize(rpc,message_id)
+        @message_id = message_id
+        @rpc = rpc
+        @done = false
+      end
+      
+      def wait(time=nil,&block)
+        # TODO timeout with eventmachine
+        @rpc.wait(self) # synchronous call that will block
+        # EM.cancel_timer(ticket)
+      end
+
+      def done!
+        @done = true
+      end
+
+      def done?
+        @done
+      end
+
+      def inspect
+        "#<#{self.class} #{message_id}>"
+      end
+    end
+
+    class Reactor
+      # want to minimize name conflicts here.
+      def initialize(rpc)
+        @rpc = rpc
+      end
+
+      def method_missing(_method,data)
+        @rpc.buffer << [header,data,meta]
+      end
+    end
+
+    attr_reader :buffer, :futures, :ready
+    def initialize(server,opts={})
+      @server = server
+      @seq = 0
+      # queue is used be used to synchronize RPC
+      # user thread and the AMQP eventmachine thread.
+      @buffer = Queue.new
+      @ready = {} # the ready results not yet waited
+      @futures = {} # all futures not yet waited for.
+      @reactor = Reactor.new(self)
+      # Creates an exclusive queue to serve the RPC client.
+      @client = @server.client(:key => "rpc.#{rand(999_999_999_999)}").
+        queue(:exclusive => true).react(@reactor,opts)
+    end
+
+    def call(method,data,meta=nil,opts={})
+      message_id = @seq.to_s
+      @client.call method, data, meta, opts.merge(:message_id => message_id) 
+      @seq += 1
+      @futures[message_id] = Future.new(self,message_id)
+    end
+
+    # the idea is to block on a synchronized queue
+    # until we get the future we want.
+    #
+    # WARNING: blocks forever if the thread
+    # calling wait is the same as the EventMachine
+    # thread.
+    def wait(future)
+      return future.data if future.done? # future was waited before
+      ready_future = nil
+      if @ready.has_key? future.message_id
+        @ready.delete future.message_id
+        ready_future = future
+      else
+        while true
+          header,data,meta = data = @buffer.pop # synchronize
+          some_future = @futures[header.message_id]
+          raise "Can't find registered future" unless some_future
+          some_future.header = header
+          some_future.data = data
+          some_future.meta = meta
+          if some_future == future
+            # The future we are waiting for
+            ready_future = future
+            break
+          else
+            # Ready, but we are not waiting for it. Save for later.
+            @ready[some_future.message_id] = some_future
+          end
+        end
+      end
+      ready_future.done!
+      @futures.delete ready_future.message_id
+      return ready_future.data
+    end
+
+    def waitall
+      @futures.values.map { |k,v|
+        wait(v)
+      }
     end
   end
   
