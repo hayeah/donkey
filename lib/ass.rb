@@ -38,7 +38,7 @@ module ASS
       obj.instance_variable_set("@__service__",service)
       obj.instance_variable_set("@__header__",info)
       obj.instance_variable_set("@__meta__",payload[:meta])
-      class << obj
+      class
         def header
           @__header__
         end
@@ -58,6 +58,63 @@ module ASS
       #p [:call,payload]
       obj.send(payload[:method],
                payload[:data])
+    end
+  end
+
+  class Server
+    include Callback
+
+    def initialize(name,opts={})
+      @server_exchange = MQ.fanout(name,opts)
+    end
+
+    def name
+      self.exchange.name
+    end
+    
+    def exchange
+      @server_exchange
+    end
+
+    def client(opts={})
+      ASS::Client.new(self,opts)
+    end
+
+    def client_name
+      "#{self.exchange.name}--"
+    end
+
+    def queue(opts={})
+      unless @queue
+        @queue ||= MQ.queue(self.name,opts)
+        @queue.bind(self.exchange)
+      end
+      self
+    end
+
+    def react(callback=nil,opts=nil,&block)
+      if block
+        opts = callback
+        callback = block
+      end
+      opts = {} if opts.nil?
+      
+      @callback_klass = build_callback_klass(callback)
+      @ack = opts[:ack]
+      self.queue unless @queue
+      @queue.subscribe(opts) do |info,payload|
+        payload = ::Marshal.load(payload)
+        #p [info,info.reply_to,payload]
+        data2 = callback(info,payload)
+        payload2 = payload.merge :data => data2
+        # the client MUST exist, otherwise it's an error.
+        ## FIXME it's bad if the server dies b/c the client isn't there.
+        MQ.direct(info.reply_to,:passive => true).
+          publish(::Marshal.dump(payload2),
+                  :routing_key => info.routing_key) if info.reply_to
+        info.ack if @ack
+      end
+      self
     end
   end
 
@@ -136,67 +193,8 @@ module ASS
     def cast(method,data=nil,meta=nil,opts={})
       self.call(method,data,meta,opts.merge({:reply_to => nil}))
     end
-
-    
   end
-
-  class Server
-    include Callback
-
-    def initialize(name,opts={})
-      @server_exchange = MQ.fanout(name,opts)
-    end
-
-    def name
-      self.exchange.name
-    end
-    
-    def exchange
-      @server_exchange
-    end
-
-    def client(opts={})
-      ASS::Client.new(self,opts)
-    end
-
-    def client_name
-      "#{self.exchange.name}--"
-    end
-
-    def queue(opts={})
-      unless @queue
-        @queue ||= MQ.queue(self.name,opts)
-        @queue.bind(self.exchange)
-      end
-      self
-    end
-
-    def react(callback=nil,opts=nil,&block)
-      if block
-        opts = callback
-        callback = block
-      end
-      opts = {} if opts.nil?
-      
-      @callback_klass = build_callback_klass(callback)
-      @ack = opts[:ack]
-      self.queue unless @queue
-      @queue.subscribe(opts) do |info,payload|
-        payload = ::Marshal.load(payload)
-        #p [info,info.reply_to,payload]
-        data2 = callback(info,payload)
-        payload2 = payload.merge :data => data2
-        # the client MUST exist, otherwise it's an error.
-        ## FIXME it's bad if the server dies b/c the client isn't there.
-        MQ.direct(info.reply_to,:passive => true).
-          publish(::Marshal.dump(payload2),
-                  :routing_key => info.routing_key) if info.reply_to
-        info.ack if @ack
-      end
-      self
-    end
-  end
-
+  
   class Peeper
     def initialize(exchange,callback)
       # create a temporary queue that binds to an exchange
