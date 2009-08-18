@@ -1,0 +1,162 @@
+
+Asynchronous Service Stages (ASS) is a way to
+organize distributed services by decoupling the
+what and how of computation from the when and
+where. Built on top of RabbitMQ (an implementation
+of AMQP), ASS helps you to build robust and
+scalable distributed applications.
+
+End of project pimping, let's get started.
+
+h1. Install
+
+You need
+
+(1) Erlang
+(2) RabbitMQ
+(3) AMQP gem
+
+Thread.new { EM.run }
+AMQP.start
+
+^C to exit
+
+
+h1. The Basics
+
+A service component is a ruby script that
+communicates with RabbitMQ. You need to define the
+AMQP server your ASS depends on. Something like this,
+
+
+require 'rubygems'
+require 'ass'
+AMQP.start(:host => 'localhost',
+           #:vhost => "/ass-test",
+           :logging => false) do
+  # ASS definition
+end
+
+
+To start a server
+
+server = ASS.new("echo")
+# => #<ASS::Server echo>
+
+But it doesn't do anything yet. You define the
+behaviour of the server by setting its
+callback. The callback can be a class, so that for
+each client request an object is created from the
+class to process the request. Like so,
+
+
+server.react(SomeReactorClass)
+
+
+However, often you just want something simple. The
+react method can take a block and construct an
+anonymous callback class from which the server
+creates an callback object for each request. Here
+we ask the server to react to @foo@ or @bar@.
+
+
+server.react {
+  def foo(input)
+    [:server,:foo,input]
+  end
+
+  def oof(input)
+    [:server,:oof,input]
+  end
+}
+
+
+The react method accepts for the callback either
+a Class, a Module, a block, or any object. When an
+object is used, it's considered a singleton, which
+is used to process all the requests.
+
+Now that we have a server, we need to get a client
+so to call the server. Because the call is
+asynchronous (the client doesn't wait for the
+result), to process the result when it gets back,
+we need to define callback for the client (just as
+we did for the server). For each call to the
+remote server, the result is processed at the
+client side by a method of the same name,
+
+
+client = server.client.react {
+  def foo(output)
+    p [:client,:foo,output]
+  end
+  def oof(output)
+    p [:client,:oof,output]
+  end
+}
+
+c.call(:foo,42)
+c.call(:oof,24)
+
+# [:client,:foo,[:server,:foo,42]]
+# [:client,:foo,[:server,:foo,24]]
+
+
+> ruby server.rb
+> ruby client.rb
+
+> ruby server.rb
+^C
+
+While the server is down, the requests the client
+is making is queued by the underlying message
+middleware (RabbitMQ), so in some future time when
+we restart the server, we wouldn't lose any
+request. Let's restart the server.
+
+> ruby server.rb
+
+See that the server caught up with all the pending
+requests. To increase service capacity, we can
+just increase the number of server instances.
+
+> ruby server.rb
+
+Now the load is distributed between these two
+instances. We can also start more clients to
+handle more load.
+
+> ruby client.rb
+
+You can see requests coming in from two clients.
+
+
+h1. Service Configuration
+
+-how the name of a service map to AMQP entities.
+-various options for different functional characteristics.
+
+-using routing_key
+-using reply_to
+
+
+rabbitmqctl list_exchanges
+rabbitmqctl list_queues
+
+
+h1. RPC service
+
+The RPC client provides a synchronous API to the
+asynchronous services. This is so the users of an
+ASS application don't have to bother with the
+difficulties of asynchronous programming style
+with callbacks.
+
+The RPC client is intended to be used as the
+gateway into some reliable internal
+services. While the internal services coordinated
+with ASS needs to be robust to component failures,
+there's no such requirements for gateways. It is
+ok for a gateway to fail, and fail in delivering a
+response, as long as the internal services carry
+out the task without a hitch.
