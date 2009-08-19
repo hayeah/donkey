@@ -12,6 +12,10 @@ module ASS
     ASS::Server.new(name)
   end
 
+  def self.rpc(name,opts={})
+    self.get(name).rpc(opts)
+  end
+
   def self.peep(server_name,callback=nil,&block)
     callback = block if callback.nil?
     ASS::Peeper.new(server_name,callback)
