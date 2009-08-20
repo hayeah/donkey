@@ -1,24 +1,40 @@
 require 'rubygems'
 require '../lib/ass.rb'
 
-# the RPC client and the EventMachine should run in different threads.
-th = Thread.new { EM.run }
 
-s = ASS.new("rpc-test").react {
-  def foo(data)
-    sleep(1)
-    [:echo,data]
-  end
-}
+EM.run {
+  EM.defer proc {}, proc {}
+  s = ASS.new("rpc-test").react {
+    def foo(data)
+      sleep(1)
+      p [:rpc,data]
+      [:rpc,data]
+    end
+  }
 
-r = s.rpc
-i = 0
-loop {
-  i += 1
-  future1 = r.call :foo, i
-  future2 = r.call :foo, "<#{i}>"
-  #p future
-  #p r.futures
-  p [:rpc,future1.wait]
-  p [:rpc,future2.wait]
+  RPC = s.rpc
+  s2 = ASS.new("foo").react {
+    def foo(i)
+      # note that b/c service reaction is done in
+      # a EM deferred thread, waiting on RPC
+      # future doesn't block the entire machine.
+      f = RPC.call :foo, i
+      p [:server,f.wait,i]
+      [f.wait,i]
+    end
+  }
+
+  c = s2.client.react {
+    def foo(i)
+      p [:client,i]
+    end
+  }
+
+  i = 0
+  EM.add_periodic_timer(1) {
+    i += 1
+    c.call :foo, i
+  }
+  
+  
 }

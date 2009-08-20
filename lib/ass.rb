@@ -137,24 +137,30 @@ module ASS
       @ack = opts[:ack]
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
-        payload = ::Marshal.load(payload)
-        #p [info,info.reply_to,payload]
-        obj = prepare_callback(@callback,info,payload)
-        data2 = obj.send(payload[:method],payload[:data])
-        payload2 = payload.merge :data => data2
-        # the client MUST exist, otherwise it's an error.
-        ## FIXME it's bad if the server dies b/c
-        ## the client isn't there. It's bad that
-        ## this can cause the server to fail.
-        ##
-        ## I am actually not sure what happens if
-        ## message is unroutable. I think it's
-        ## just silently dropped unless the
-        ## mandatory option is given.
-        ASS.cast(info.reply_to, ::Marshal.dump(payload2),
-                 :routing_key => info.routing_key,
-                 :message_id => info.message_id) if info.reply_to
-        info.ack if @ack
+        operation = proc {
+          payload = ::Marshal.load(payload)
+          #p [info,info.reply_to,payload]
+          obj = prepare_callback(@callback,info,payload)
+          data2 = obj.send(payload[:method],payload[:data])
+          payload2 = payload.merge :data => data2
+          payload2
+        }
+        done = proc { |payload2|
+          # the client MUST exist, otherwise it's an error.
+          ## FIXME it's bad if the server dies b/c
+          ## the client isn't there. It's bad that
+          ## this can cause the server to fail.
+          ##
+          ## I am actually not sure what happens if
+          ## message is unroutable. I think it's
+          ## just silently dropped unless the
+          ## mandatory option is given.
+          ASS.cast(info.reply_to, ::Marshal.dump(payload2),
+                   :routing_key => info.routing_key,
+                   :message_id => info.message_id) if info.reply_to
+          info.ack if @ack
+        }
+        EM.defer operation, done
       end
       self
     end
@@ -208,10 +214,16 @@ module ASS
       # ensure queue is set
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
-        payload = ::Marshal.load(payload)
-        obj = prepare_callback(@callback,info,payload)
-        obj.send(payload[:method],payload[:data])
-        info.ack if @ack
+        operation = proc {
+          payload = ::Marshal.load(payload)
+          obj = prepare_callback(@callback,info,payload)
+          obj.send(payload[:method],payload[:data])
+        }
+        done = proc { |_r|
+          # not actually doing anything with result
+          info.ack if @ack
+        }
+        EM.defer operation, done
       end
       self
     end
@@ -324,6 +336,13 @@ module ASS
     # WARNING: blocks forever if the thread
     # calling wait is the same as the EventMachine
     # thread.
+    #
+    # It is safe (btw) to call wait within the
+    # Server and Client reactor methods, because
+    # they are invoked within their own EM
+    # deferred threads (so does not block the main
+    # EM reactor thread (which consumes the
+    # messages from queue)).
     def wait(future,timeout=nil)
       return future.data if future.done? # future was waited before
       timer = nil
