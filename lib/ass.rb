@@ -32,17 +32,13 @@ module ASS
       def header
         @__header__
       end
-      
-      def meta
-        @__meta__
-      end
-      
+
       def service
         @__service__
       end
       
-      def call(method,data=nil,meta=nil,opts={})
-        @__service__.call(method,data,meta,opts)
+      def call(method,data=nil,opts={})
+        @__service__.call(method,data,opts)
       end
     end
 
@@ -69,7 +65,7 @@ module ASS
 
     # called for each request
     def prepare_callback(callback,info,payload)
-      # method,data,meta
+      # method,data
       if callback.is_a? Class
         if callback.respond_to? :version
           klass = callback.get_version(payload[:version])
@@ -82,7 +78,6 @@ module ASS
       end
       obj.instance_variable_set("@__service__",self)
       obj.instance_variable_set("@__header__",info)
-      obj.instance_variable_set("@__meta__",payload[:meta])
       #p [:call,payload]
       obj
     end
@@ -230,13 +225,12 @@ module ASS
 
     # note that we can redirect the result to some
     # place else by setting :key and :reply_to
-    def call(method,data=nil,meta=nil,opts={})
+    def call(method,data=nil,opts={})
       # opts passed to publish
       # if no routing key is given, use receiver's name as the routing key.
       payload = {
         :method => method,
         :data => data,
-        :meta => meta,
       }
 
       @server.exchange.publish Marshal.dump(payload), {
@@ -247,8 +241,8 @@ module ASS
     end
     
     # for casting, just null the reply_to field, so server doesn't respond.
-    def cast(method,data=nil,meta=nil,opts={})
-      self.call(method,data,meta,opts.merge({:reply_to => nil}))
+    def cast(method,data=nil,opts={})
+      self.call(method,data,opts.merge({:reply_to => nil}))
     end
 
     def inspect
@@ -266,7 +260,7 @@ module ASS
     # hmmm. I guess deferrable is a better idea.
     class Future
       attr_reader :message_id
-      attr_accessor :header, :data, :meta, :timeout
+      attr_accessor :header, :data, :timeout
       def initialize(rpc,message_id)
         @message_id = message_id
         @rpc = rpc
@@ -304,7 +298,7 @@ module ASS
       end
 
       def method_missing(_method,data)
-        @rpc.buffer << [header,data,meta]
+        @rpc.buffer << [header,data]
       end
     end
 
@@ -323,9 +317,9 @@ module ASS
         queue(:exclusive => true).react(@reactor,opts)
     end
 
-    def call(method,data,meta=nil,opts={})
+    def call(method,data,opts={})
       message_id = @seq.to_s # message gotta be unique for this RPC client.
-      @client.call method, data, meta, opts.merge(:message_id => message_id)
+      @client.call method, data, opts.merge(:message_id => message_id)
       @seq += 1
       @futures[message_id] = Future.new(self,message_id)
     end
@@ -348,7 +342,7 @@ module ASS
       timer = nil
       if timeout
         timer = EM.add_timer(timeout) {
-          @buffer << [:timeout,future.message_id,nil]
+          @buffer << [:timeout,future.message_id]
         }
       end
       ready_future = nil
@@ -357,7 +351,7 @@ module ASS
         ready_future = future
       else
         while true
-          header,data,meta = data = @buffer.pop # synchronize. like erlang's mailbox select.
+          header,data = data = @buffer.pop # synchronize. like erlang's mailbox select.
           if header == :timeout # timeout the future we are waiting for.
             message_id = data
             # if we got a timeout from previous wait. throw it away.
@@ -374,7 +368,6 @@ module ASS
           next unless some_future 
           some_future.header = header
           some_future.data = data
-          some_future.meta = meta
           if some_future == future
             # The future we are waiting for
             EM.cancel_timer(timer)
