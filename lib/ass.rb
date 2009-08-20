@@ -1,11 +1,11 @@
 require 'mq'
-
+require 'amqp' # monkey patch stolen from nanite.
 # TODO a way to specify serializer (json, marshal...)
 module ASS
 
   # non-destructive get. Fail if server's not started.
   def self.get(name)
-    ASS::Server.new(name,:passive => true)
+    ASS::Server.new(name,:no_declare => true)
   end
 
   def self.new(name,opts={})
@@ -14,6 +14,12 @@ module ASS
 
   def self.rpc(name,opts={})
     self.get(name).rpc(opts)
+  end
+
+  # sometime you just want to respond to the reply_to
+  # of a message without anything else.
+  def self.cast(name,data,opts={})
+    MQ.direct(name,:no_declare => true).publish(data,opts)
   end
 
   def self.peep(server_name,callback=nil,&block)
@@ -140,10 +146,14 @@ module ASS
         ## FIXME it's bad if the server dies b/c
         ## the client isn't there. It's bad that
         ## this can cause the server to fail.
-        MQ.direct(info.reply_to,:passive => true).
-          publish(::Marshal.dump(payload2),
-                  :routing_key => info.routing_key,
-                  :message_id => info.message_id) if info.reply_to
+        ##
+        ## I am actually not sure what happens if
+        ## message is unroutable. I think it's
+        ## just silently dropped unless the
+        ## mandatory option is given.
+        ASS.cast(info.reply_to, ::Marshal.dump(payload2),
+                 :routing_key => info.routing_key,
+                 :message_id => info.message_id) if info.reply_to
         info.ack if @ack
       end
       self
