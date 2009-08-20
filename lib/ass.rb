@@ -221,12 +221,10 @@ module ASS
     def call(method,data=nil,meta=nil,opts={})
       # opts passed to publish
       # if no routing key is given, use receiver's name as the routing key.
-      version = @klass.version  if @klass.respond_to? :version
       payload = {
         :method => method,
         :data => data,
         :meta => meta,
-        :version => version
       }
 
       @server.exchange.publish Marshal.dump(payload), {
