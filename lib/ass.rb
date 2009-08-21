@@ -1,3 +1,4 @@
+$:.unshift File.expand_path(File.dirname(File.expand_path(__FILE__)))
 require 'mq'
 require 'amqp' # monkey patch stolen from nanite.
 # TODO a way to specify serializer (json, marshal...)
@@ -19,7 +20,7 @@ module ASS
   # sometime you just want to respond to the reply_to
   # of a message without anything else.
   def self.cast(name,data,opts={})
-    MQ.direct(name,:no_declare => true).publish(data,opts)
+    MQ.direct(name,:no_declare => true).publish(::Marshal.dump(data),opts)
   end
 
   def self.peep(server_name,callback=nil,&block)
@@ -78,7 +79,6 @@ module ASS
       end
       obj.instance_variable_set("@__service__",self)
       obj.instance_variable_set("@__header__",info)
-      #p [:call,payload]
       obj
     end
   end
@@ -133,12 +133,18 @@ module ASS
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
         operation = proc {
-          payload = ::Marshal.load(payload)
-          #p [info,info.reply_to,payload]
-          obj = prepare_callback(@callback,info,payload)
-          data2 = obj.send(payload[:method],payload[:data])
-          payload2 = payload.merge :data => data2
-          payload2
+          begin
+            payload = ::Marshal.load(payload)
+            obj = prepare_callback(@callback,info,payload)
+            data2 = obj.send(payload[:method],payload[:data])
+            payload2 = payload.merge :data => data2
+            payload2
+          rescue
+            # uncaught error in worker is programmatic error.
+            p $!
+            puts $!.backtrace
+            EM.stop_event_loop
+          end
         }
         done = proc { |payload2|
           # the client MUST exist, otherwise it's an error.
@@ -150,7 +156,7 @@ module ASS
           ## message is unroutable. I think it's
           ## just silently dropped unless the
           ## mandatory option is given.
-          ASS.cast(info.reply_to, ::Marshal.dump(payload2),
+          ASS.cast(info.reply_to, payload2,
                    :routing_key => info.routing_key,
                    :message_id => info.message_id) if info.reply_to
           info.ack if @ack
@@ -168,13 +174,14 @@ module ASS
   class Client
     include Callback
 
+    attr_reader :key
     # takes options available to MQ::Exchange
     def initialize(server,opts={})
       @server = server
       # the routing key is also used as the name of the client
-      @key = opts.delete :key
-      @key = @key.to_s if @key
+      key = opts.delete :key
       @client_exchange = MQ.direct @server.client_name, opts
+      @key = key ? key.to_s : @server.client_name
     end
 
     def name
@@ -191,7 +198,7 @@ module ASS
         # if key is not given, the queue name is
         # the same as the exchange name.
         @queue ||= MQ.queue("#{self.name}#{@key}",opts)
-        @queue.bind(self.exchange,:routing_key => @key || self.name)
+        @queue.bind(self.exchange,:routing_key => self.key)
       end
       self # return self to allow chaining
     end
@@ -210,9 +217,16 @@ module ASS
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
         operation = proc {
+          begin
           payload = ::Marshal.load(payload)
           obj = prepare_callback(@callback,info,payload)
-          obj.send(payload[:method],payload[:data])
+            obj.send(payload[:method],payload[:data])
+          rescue
+            # uncaught error in worker is programmatic error.
+            p $!
+            puts $!.backtrace
+            EM.stop_event_loop
+          end
         }
         done = proc { |_r|
           # not actually doing anything with result
@@ -233,11 +247,10 @@ module ASS
         :data => data,
       }
 
-      @server.exchange.publish Marshal.dump(payload), {
-        # opts[:routing_key] will override :key in MQ::Exchange#publish
-        :key => (@key ? @key : self.name),
-        :reply_to => self.name
-      }.merge(opts)
+      # opts[:routing_key] will override :key in MQ::Exchange#publish
+      ASS.cast(@server.exchange.name,payload,
+               {:key => self.key,
+                :reply_to => self.name}.merge(opts))
     end
     
     # for casting, just null the reply_to field, so server doesn't respond.
