@@ -264,13 +264,8 @@ module ASS
   end
 
   # assumes server initializes it with an exclusive and auto_delete queue.
-  # TODO timeout
   class RPC
     require 'thread'
-
-    # i don't want deferrable. I want actual blockage when waiting.
-    ## subscribe prolly run in a different thread.
-    # hmmm. I guess deferrable is a better idea.
     class Future
       attr_reader :message_id
       attr_accessor :header, :data, :timeout
@@ -282,9 +277,7 @@ module ASS
       end
       
       def wait(timeout=nil,&block)
-        # TODO timeout with eventmachine
         @rpc.wait(self,timeout,&block) # synchronous call that will block
-        # EM.cancel_timer(ticket)
       end
 
       def done!
