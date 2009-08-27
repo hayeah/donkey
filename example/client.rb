@@ -1,9 +1,9 @@
 require 'rubygems'
 require '../lib/ass.rb'
 
-AMQP.start(:host => 'localhost',
-           #:vhost => "/ass-test",
-           :logging => false) do
+ASS.start(:host => 'localhost',
+          #:vhost => "/ass-test",
+          :logging => false) do
   s = ASS.new("foo")
   c = s.client.react {
     def foo(data)
@@ -23,9 +23,9 @@ AMQP.start(:host => 'localhost',
   EM.add_periodic_timer(1) {
     data = [Process.pid,i]
     i += 1
-    c.send :foo, data
-    c.send :foo_cast, [:cast,data]
-    c_keyed.send :foo, data
+    c.call :foo, data
+    c.call :foo_cast, [:cast,data]
+    c_keyed.call :foo, data
   }
   
 end

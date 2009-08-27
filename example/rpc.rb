@@ -2,8 +2,7 @@ require 'rubygems'
 require '../lib/ass.rb'
 
 
-EM.run {
-  EM.defer proc {}, proc {}
+ASS.start {
   s = ASS.new("rpc-test").react {
     def foo(data)
       sleep(1)
@@ -33,7 +32,7 @@ EM.run {
   i = 0
   EM.add_periodic_timer(1) {
     i += 1
-    c.call :foo, i
+    c.call :foo, [Process.pid,i]
   }
   
   

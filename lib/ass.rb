@@ -1,8 +1,24 @@
 $:.unshift File.expand_path(File.dirname(File.expand_path(__FILE__)))
 require 'mq'
-require 'amqp' # monkey patch stolen from nanite.
+require 'ass/amqp' # monkey patch stolen from nanite.
 # TODO a way to specify serializer (json, marshal...)
 module ASS
+
+  #MQ = nil
+  def self.start(settings={},&block)
+    # ASS and its worker threads should share the same MQ instance.
+    raise "should have one ASS per process" if @started
+    @started = true
+    EM.run {
+      @mq = ::MQ.new(AMQP.start(settings))
+      self.const_set("MQ",@mq)
+      yield
+    }
+  end
+
+  def self.MQ
+    @mq
+  end
 
   # non-destructive get. Fail if server's not started.
   def self.get(name)
@@ -23,7 +39,7 @@ module ASS
 
   # sometime you just want to respond to the reply_to
   # of a message without anything else.
-  def self.send(name,data,opts={})
+  def self.call(name,data,opts={})
     MQ.direct(name,:no_declare => true).publish(::Marshal.dump(data),opts)
   end
 
@@ -175,7 +191,7 @@ module ASS
           when :ok
             # respond back to client
             payload = result[1]
-            ASS.send(info.reply_to, payload,
+            ASS.call(info.reply_to, payload,
                      :routing_key => info.routing_key,
                      :message_id => info.message_id)
             info.ack if @ack
@@ -277,7 +293,7 @@ module ASS
     # place by setting a combination of
     # :routing_key (alias :key)
     # :reply_to
-    def send(method,data=nil,opts={})
+    def call(method,data=nil,opts={})
       # opts passed to publish
       payload = {
         :method => method,
@@ -285,7 +301,7 @@ module ASS
       }
       # if no routing key is given, use receiver's name as the routing key.
       # opts[:routing_key] will override :key in MQ::Exchange#publish
-      ASS.send(@server.exchange.name,payload, {
+      ASS.call(@server.exchange.name,payload, {
                  :key => self.key,
                  :reply_to => self.name}.merge(opts))
     end
@@ -298,6 +314,8 @@ module ASS
   # assumes server initializes it with an exclusive and auto_delete queue.
   class RPC
     require 'thread'
+    require 'monitor'
+    
     class Future
       attr_reader :message_id
       attr_accessor :header, :data, :timeout
@@ -342,6 +360,7 @@ module ASS
 
     attr_reader :buffer, :futures, :ready
     def initialize(server,opts={})
+      self.extend(MonitorMixin)
       @server = server
       @seq = 0
       # queue is used be used to synchronize RPC
@@ -377,49 +396,58 @@ module ASS
     # messages from queue)).
     def wait(future,timeout=nil)
       return future.data if future.done? # future was waited before
-      timer = nil
-      if timeout
-        timer = EM.add_timer(timeout) {
-          @buffer << [:timeout,future.message_id]
-        }
-      end
-      ready_future = nil
-      if @ready.has_key? future.message_id
-        @ready.delete future.message_id
-        ready_future = future
-      else
-        while true
-          header,data = data = @buffer.pop # synchronize. like erlang's mailbox select.
-          if header == :timeout # timeout the future we are waiting for.
-            message_id = data
-            # if we got a timeout from previous wait. throw it away.
-            next if future.message_id != message_id 
-            future.timeout = true
-            future.done!
-            @futures.delete future.message_id
-            return yield # return the value of timeout block
-          end
-          some_future = @futures[header.message_id]
-          # If we didn't find the future among the
-          # future, it must have timedout. Just
-          # throw result away and keep processing.
-          next unless some_future 
-          some_future.header = header
-          some_future.data = data
-          if some_future == future
-            # The future we are waiting for
-            EM.cancel_timer(timer)
-            ready_future = future
-            break
-          else
-            # Ready, but we are not waiting for it. Save for later.
-            @ready[some_future.message_id] = some_future
+      # we can have more fine grained synchronization later.
+      ## easiest thing to do (later) is use threadsafe hash for @futures and @ready.
+      ### But it's actually trickier than
+      ### that. Before each @buffer.pop, a thread
+      ### has to check again if it sees the result
+      ### in @ready.
+      self.synchronize do
+        
+        timer = nil
+        if timeout
+          timer = EM.add_timer(timeout) {
+            @buffer << [:timeout,future.message_id]
+          }
+        end
+        ready_future = nil
+        if @ready.has_key? future.message_id
+          @ready.delete future.message_id
+          ready_future = future
+        else
+          while true
+            header,data = data = @buffer.pop # synchronize. like erlang's mailbox select.
+            if header == :timeout # timeout the future we are waiting for.
+              message_id = data
+              # if we got a timeout from previous wait. throw it away.
+              next if future.message_id != message_id 
+              future.timeout = true
+              future.done!
+              @futures.delete future.message_id
+              return yield # return the value of timeout block
+            end
+            some_future = @futures[header.message_id]
+            # If we didn't find the future among the
+            # future, it must have timedout. Just
+            # throw result away and keep processing.
+            next unless some_future 
+            some_future.header = header
+            some_future.data = data
+            if some_future == future
+              # The future we are waiting for
+              EM.cancel_timer(timer)
+              ready_future = future
+              break
+            else
+              # Ready, but we are not waiting for it. Save for later.
+              @ready[some_future.message_id] = some_future
+            end
           end
         end
+        ready_future.done!
+        @futures.delete ready_future.message_id
+        return ready_future.data
       end
-      ready_future.done!
-      @futures.delete ready_future.message_id
-      return ready_future.data
     end
 
     def waitall
