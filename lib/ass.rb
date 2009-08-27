@@ -193,7 +193,7 @@ module ASS
             payload = result[1]
             ASS.call(info.reply_to, payload,
                      :routing_key => info.routing_key,
-                     :message_id => info.message_id)
+                     :message_id => info.message_id) if info.reply_to
             info.ack if @ack
           when :discarded
             # no response back to client
@@ -308,6 +308,11 @@ module ASS
       ASS.call(@server.exchange.name,payload, {
                  :key => self.key,
                  :reply_to => self.name}.merge(opts))
+    end
+
+    # for casting, just null the reply_to field, so server doesn't respond.
+    def cast(method,data=nil,opts={})
+      self.call(method,data,opts.merge({:reply_to => nil}))
     end
     
     def inspect
