@@ -124,7 +124,7 @@ module ASS
 
     # takes options available to MQ::Exchange
     def client(opts={})
-      ASS::Client.new(self,opts)
+      @client ||= ASS::Client.new(self,opts)
     end
 
     def client_name
@@ -133,7 +133,7 @@ module ASS
 
     # takes options available to MQ::Queue# takes options available to MQ::Queue#subscribe
     def rpc(opts={})
-      ASS::RPC.new(self,opts)
+      @rpc ||= ASS::RPC.new(self,opts)
     end
 
     def queue(opts={})
@@ -228,6 +228,10 @@ module ASS
       key = opts.delete :key
       @client_exchange = MQ.direct @server.client_name, opts
       @key = key ? key.to_s : @server.client_name
+    end
+
+    def rpc(opts={})
+      @server.rpc(opts)
     end
 
     def name
