@@ -13,6 +13,10 @@ module ASS
     ASS::Server.new(name)
   end
 
+  def self.client(name,opts={})
+    ASS.get(name).client(opts)
+  end
+
   def self.rpc(name,opts={})
     self.get(name).rpc(opts)
   end

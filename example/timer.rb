@@ -12,8 +12,7 @@ s = ASS::Timer.server("timer-test")
 
 t = ASS::Timer.client("timer-test")
 
-foo = ASS.new("foo")
-foo_c = foo.client.react {
+foo_c = Ass.client("foo").react {
   def foo(data)
     p [:foo_c,data]
     #EM.stop_event_loop

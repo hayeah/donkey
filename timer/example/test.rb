@@ -7,8 +7,7 @@ s = Timer.server("timer-test")
 
 t = Timer.client("timer-test")
 
-foo = ASS.new("foo")
-foo_c = foo.client.react {
+foo_c = ASS.client("foo").react {
   def foo(data)
     p [:foo_c,data]
     #EM.stop_event_loop
