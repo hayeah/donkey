@@ -6,10 +6,14 @@ AMQP.start(:host => 'localhost',
            :logging => false) do
   s = ASS.new("foo").react {
     def foo(data)
-      p [:server,data]
+      p [:foo,data]
       data
     end
-    
+
+    def foo_cast(data)
+      p [:foo_cast,data]
+      discard
+    end
   }
   
 end

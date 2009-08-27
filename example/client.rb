@@ -23,8 +23,9 @@ AMQP.start(:host => 'localhost',
   EM.add_periodic_timer(1) {
     data = [Process.pid,i]
     i += 1
-    c.call :foo, data
-    c_keyed.call :foo, data
+    c.send :foo, data
+    c.send :foo_cast, [:cast,data]
+    c_keyed.send :foo, data
   }
   
 end

@@ -23,7 +23,7 @@ module ASS
 
   # sometime you just want to respond to the reply_to
   # of a message without anything else.
-  def self.cast(name,data,opts={})
+  def self.send(name,data,opts={})
     MQ.direct(name,:no_declare => true).publish(::Marshal.dump(data),opts)
   end
 
@@ -34,6 +34,10 @@ module ASS
   
   module Callback
     module MagicMethods
+      def discard
+        throw(:__ass_discard)
+      end
+      
       def header
         @__header__
       end
@@ -140,17 +144,24 @@ module ASS
           begin
             payload = ::Marshal.load(payload)
             obj = prepare_callback(@callback,info,payload)
-            data2 = obj.send(payload[:method],payload[:data])
-            payload2 = payload.merge :data => data2
-            payload2
+            
+            not_discarded = false
+            payload2 = nil
+            catch(:__ass_discard) do
+              data2 = obj.send(payload[:method],payload[:data])
+              payload2 = payload.merge :data => data2
+              not_discarded = true
+            end
+            if not_discarded
+              [:ok,payload2]
+            else
+              [:discarded]
+            end
           rescue
-            # uncaught error in worker is programmatic error.
-            p $!
-            puts $!.backtrace
-            EM.stop_event_loop
+            [:error,$!]
           end
         }
-        done = proc { |payload2|
+        done = proc { |result|
           # the client MUST exist, otherwise it's an error.
           ## FIXME it's bad if the server dies b/c
           ## the client isn't there. It's bad that
@@ -160,10 +171,25 @@ module ASS
           ## message is unroutable. I think it's
           ## just silently dropped unless the
           ## mandatory option is given.
-          ASS.cast(info.reply_to, payload2,
-                   :routing_key => info.routing_key,
-                   :message_id => info.message_id) if info.reply_to
-          info.ack if @ack
+          case status = result[0]
+          when :ok
+            # respond back to client
+            payload = result[1]
+            ASS.send(info.reply_to, payload,
+                     :routing_key => info.routing_key,
+                     :message_id => info.message_id)
+            info.ack if @ack
+          when :discarded
+            # no response back to client
+            info.ack if @ack
+          when :error
+            # programmatic error. don't ack
+            e = result[1]
+            p e
+            puts e.backtrace
+            # don't ack.
+          end
+          
         }
         EM.defer operation, done
       end
@@ -222,46 +248,48 @@ module ASS
       @queue.subscribe(opts) do |info,payload|
         operation = proc {
           begin
-          payload = ::Marshal.load(payload)
-          obj = prepare_callback(@callback,info,payload)
+            payload = ::Marshal.load(payload)
+            obj = prepare_callback(@callback,info,payload)
             obj.send(payload[:method],payload[:data])
+            [:ok]
           rescue
-            # uncaught error in worker is programmatic error.
-            p $!
-            puts $!.backtrace
-            EM.stop_event_loop
+            [:error,$!]
           end
         }
-        done = proc { |_r|
+        done = proc { |result|
           # not actually doing anything with result
           info.ack if @ack
+          case result[0]
+          when :ok
+            # do nothing
+          when :error
+            e = result[1]
+            p e
+            puts e.backtrace
+          end
         }
         EM.defer operation, done
       end
       self
     end
 
-    # note that we can redirect the result to some
-    # place else by setting :key and :reply_to
-    def call(method,data=nil,opts={})
+    # we can redirect the result to some other
+    # place by setting a combination of
+    # :routing_key (alias :key)
+    # :reply_to
+    def send(method,data=nil,opts={})
       # opts passed to publish
-      # if no routing key is given, use receiver's name as the routing key.
       payload = {
         :method => method,
         :data => data,
       }
-
+      # if no routing key is given, use receiver's name as the routing key.
       # opts[:routing_key] will override :key in MQ::Exchange#publish
-      ASS.cast(@server.exchange.name,payload,
-               {:key => self.key,
-                :reply_to => self.name}.merge(opts))
+      ASS.send(@server.exchange.name,payload, {
+                 :key => self.key,
+                 :reply_to => self.name}.merge(opts))
     end
     
-    # for casting, just null the reply_to field, so server doesn't respond.
-    def cast(method,data=nil,opts={})
-      self.call(method,data,opts.merge({:reply_to => nil}))
-    end
-
     def inspect
       "#<#{self.class} #{self.name}>"
     end
