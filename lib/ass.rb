@@ -151,8 +151,12 @@ module ASS
         callback = block
       end
       opts = {} if opts.nil?
-      
+
+      # second call would just swap out the callback.
       @callback = build_callback(callback)
+
+      return(self) if @subscribed
+      @subscribed = true
       @ack = opts[:ack]
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
@@ -261,9 +265,12 @@ module ASS
       end
       opts = {} if opts.nil?
 
+      # second call would just swap out the callback.
       @callback = build_callback(callback)
+
+      return(self) if @subscribed
+      @subscribed = true
       @ack = opts[:ack]
-      # ensure queue is set
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
         operation = proc {
@@ -425,7 +432,7 @@ module ASS
           ready_future = future
         else
           while true
-            header,data = data = @buffer.pop # synchronize. like erlang's mailbox select.
+            header,data = @buffer.pop # synchronize. like erlang's mailbox select.
             if header == :timeout # timeout the future we are waiting for.
               message_id = data
               # if we got a timeout from previous wait. throw it away.

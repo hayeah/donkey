@@ -1,5 +1,5 @@
 require 'rubygems'
-require '../lib/ass.rb'
+require 'lib/ass.rb'
 
 ASS.start(:host => 'localhost',
            #:vhost => "/ass-test",
