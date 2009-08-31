@@ -39,7 +39,7 @@ module ASS
 
   # sometime you just want to respond to the reply_to
   # of a message without anything else.
-  def self.call(name,data,opts={})
+  def self.call(name,data=nil,opts={})
     MQ.direct(name,:no_declare => true).publish(::Marshal.dump(data),opts)
   end
 
@@ -390,7 +390,11 @@ module ASS
         queue(:exclusive => true).react(@reactor,opts)
     end
 
-    def call(method,data,opts={})
+    def name
+      self.client.key
+    end
+
+    def call(method,data=nil,opts={})
       message_id = @seq.to_s # message gotta be unique for this RPC client.
       @client.call method, data, opts.merge(:message_id => message_id)
       @seq += 1
