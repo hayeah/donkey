@@ -59,6 +59,10 @@ module ASS
   
   module Callback
     module MagicMethods
+      def requeue
+        throw(:__ass_requeue)
+      end
+      
       def discard
         throw(:__ass_discard)
       end
@@ -175,16 +179,22 @@ module ASS
             obj = prepare_callback(@callback,info,payload)
             
             not_discarded = false
+            not_requeued = false
             payload2 = nil
             catch(:__ass_discard) do
-              data2 = obj.send(payload[:method],payload[:data])
-              payload2 = payload.merge :data => data2
+              catch(:__ass_requeue) do
+                data2 = obj.send(payload[:method],payload[:data])
+                payload2 = payload.merge :data => data2
+                not_requeued = true
+              end
               not_discarded = true
             end
-            if not_discarded
+            if not_discarded && not_requeued
               [:ok,payload2]
-            else
+            elsif not_discarded == false
               [:discarded]
+            elsif not_requeued == false
+              [:requeued,payload] # requeue original payload
             end
           rescue
             [:error,$!]
@@ -200,6 +210,7 @@ module ASS
           ## message is unroutable. I think it's
           ## just silently dropped unless the
           ## mandatory option is given.
+          #p [:a_s,@ack,info]
           case status = result[0]
           when :ok
             # respond back to client
@@ -209,6 +220,16 @@ module ASS
                      :routing_key => info.routing_key,
                      :message_id => info.message_id) if info.reply_to
             info.ack if @ack
+          when :requeued
+            # resend the same message
+            payload = result[1]
+            #p [:requeue,self,payload,info]
+            ASS.call(self.name,payload,{
+                       :reply_to => info.reply_to,
+                       :routing_key => info.routing_key,
+                       :message_id => info.message_id
+                     })
+            info.ack if @ack
           when :discarded
             # no response back to client
             info.ack if @ack
@@ -217,6 +238,7 @@ module ASS
             e = result[1]
             p e
             puts e.backtrace
+            EM.stop_event_loop
             # don't ack.
           end
           
@@ -285,9 +307,9 @@ module ASS
       @queue.subscribe(opts) do |info,payload|
         operation = proc {
           begin
-            payload = ::Marshal.load(payload)
-            obj = prepare_callback(@callback,info,payload)
-            obj.send(payload[:method],payload[:data])
+            payload2 = ::Marshal.load(payload)
+            obj = prepare_callback(@callback,info,payload2)
+            obj.send(payload2[:method],payload2[:data])
             [:ok]
           rescue
             [:error,$!]
@@ -303,6 +325,8 @@ module ASS
             e = result[1]
             p e
             puts e.backtrace
+            # unhandled error should break ASS
+            EM.stop_event_loop
           end
         }
         EM.defer operation, done
