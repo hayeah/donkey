@@ -5,14 +5,14 @@ require 'ass/amqp' # monkey patch stolen from nanite.
 module ASS
 
   #MQ = nil
-  def self.start(settings={},&block)
+  def self.start(settings={})
     # ASS and its worker threads should share the same MQ instance.
     raise "should have one ASS per process" if @started
     @started = true
     EM.run {
       @mq = ::MQ.new(AMQP.start(settings))
       self.const_set("MQ",@mq)
-      yield
+      yield if block_given?
     }
   end
 
@@ -45,6 +45,15 @@ module ASS
 
   def self.peep(server_name,callback=nil,&block)
     callback = block if callback.nil?
+    callback = Module.new {
+      def server(*args)
+        p [:server,args]
+      end
+
+      def client(*args)
+        p [:client,args]
+      end
+    }
     ASS::Peeper.new(server_name,callback)
   end
   
@@ -195,6 +204,7 @@ module ASS
           when :ok
             # respond back to client
             payload = result[1]
+            
             ASS.call(info.reply_to, payload,
                      :routing_key => info.routing_key,
                      :message_id => info.message_id) if info.reply_to
@@ -391,7 +401,7 @@ module ASS
     end
 
     def name
-      self.client.key
+      @client.key
     end
 
     def call(method,data=nil,opts={})
