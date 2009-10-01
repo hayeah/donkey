@@ -32,7 +32,12 @@ module ASS
     ASS::Server.new(name,:no_declare => true)
   end
 
-  def self.new(name,opts={})
+  def self.new(*args,&block)
+    self.server(*args,&block)
+  end
+
+  def self.server(name,opts={},&block)
+    raise "should call ASS::Server.react" if block # sanity check
     ASS::Server.new(name)
   end
 
@@ -469,7 +474,6 @@ module ASS
       ### has to check again if it sees the result
       ### in @ready.
       self.synchronize do
-        
         timer = nil
         if timeout
           timer = EM.add_timer(timeout) {
