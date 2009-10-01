@@ -6,16 +6,23 @@ module ASS
 
   #MQ = nil
   def self.start(settings={})
-    # ASS and its worker threads should share the same MQ instance.
-    raise "should have one ASS per process" if @started
-    @started = true
+    raise "should have one ASS per eventmachine" if EM.reactor_running? == true # allow ASS to restart if EM is not running.
     EM.run {
       @mq = ::MQ.new(AMQP.start(settings))
-      self.const_set("MQ",@mq)
+      # ASS and its worker threads (EM.threadpool) should share the same MQ instance.
+      self.const_set("MQ",@mq) # TODO remove this hack. 
       yield if block_given?
     }
   end
 
+  def self.stop
+    AMQP.stop{ EM.stop }
+  end
+
+  def self.mq
+    @mq
+  end
+  
   def self.MQ
     @mq
   end
@@ -45,6 +52,7 @@ module ASS
   # of a message without anything else.
   def self.call(name,data=nil,opts={})
     MQ.direct(name,:no_declare => true).publish(::Marshal.dump(data),opts)
+    true
   end
 
   def self.peep(server_name,callback=nil,&block)
@@ -413,6 +421,7 @@ module ASS
 
     attr_reader :buffer, :futures, :ready
     def initialize(server,opts={})
+      raise "can't run rpc client in the same thread as eventmachine" if EM.reactor_thread?
       self.extend(MonitorMixin)
       @server = server
       @seq = 0
