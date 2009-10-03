@@ -174,6 +174,38 @@ module ASS
       self
     end
 
+
+
+    def with_handlers
+      not_discarded = false
+      not_requeued = false
+      not_raised = false
+      result = nil
+      error = nil
+      catch(:__ass_discard) do
+        catch(:__ass_requeue) do
+          begin
+            result = yield
+            not_raised = true
+          rescue => e
+            error = e
+          end
+          not_requeued = true
+        end
+        not_discarded = true
+      end
+      
+      if not_discarded && not_requeued && not_raised
+        [:ok,result]
+      elsif not_discarded == false
+        [:discard]
+      elsif not_requeued == false
+        [:requeue] # requeue original payload
+      elsif not_raised == false
+        [:error,e]
+      end
+    end
+
     # takes options available to MQ::Queue# takes options available to MQ::Queue#subscribe
     def react(callback=nil,opts=nil,&block)
       if block
@@ -190,31 +222,12 @@ module ASS
       @ack = opts[:ack]
       self.queue unless @queue
       @queue.subscribe(opts) do |info,payload|
+        payload = ::Marshal.load(payload)
+        callback = prepare_callback(@callback,info,payload)
+        
         operation = proc {
-          begin
-            payload = ::Marshal.load(payload)
-            obj = prepare_callback(@callback,info,payload)
-            
-            not_discarded = false
-            not_requeued = false
-            payload2 = nil
-            catch(:__ass_discard) do
-              catch(:__ass_requeue) do
-                data2 = obj.send(payload[:method],payload[:data])
-                payload2 = payload.merge :data => data2
-                not_requeued = true
-              end
-              not_discarded = true
-            end
-            if not_discarded && not_requeued
-              [:ok,payload2]
-            elsif not_discarded == false
-              [:discarded]
-            elsif not_requeued == false
-              [:requeued,payload] # requeue original payload
-            end
-          rescue
-            [:error,$!]
+          with_handlers do
+            callback.send(payload[:method],payload[:data])
           end
         }
         done = proc { |result|
@@ -223,30 +236,26 @@ module ASS
           ## the client isn't there. It's bad that
           ## this can cause the server to fail.
           ##
-          ## I am actually not sure what happens if
-          ## message is unroutable. I think it's
-          ## just silently dropped unless the
-          ## mandatory option is given.
+          ## I am not sure what happens if message
+          ## is unroutable. I think it's just
+          ## silently dropped unless the mandatory
+          ## option is given.
           case status = result[0]
           when :ok
-            # respond back to client
-            payload = result[1]
-            
-            ASS.call(info.reply_to, payload,
+            # respond back to client with processed data
+            ASS.call(info.reply_to, payload.merge(:data => result[1]),
                      :routing_key => info.routing_key,
                      :message_id => info.message_id) if info.reply_to
             info.ack if @ack
-          when :requeued
+          when :requeue
             # resend the same message
-            payload = result[1]
-            #p [:requeue,self,payload,info]
             ASS.call(self.name,payload,{
                        :reply_to => info.reply_to,
                        :routing_key => info.routing_key,
                        :message_id => info.message_id
                      })
             info.ack if @ack
-          when :discarded
+          when :discard
             # no response back to client
             info.ack if @ack
           when :error
@@ -254,7 +263,7 @@ module ASS
             e = result[1]
             p e
             puts e.backtrace
-            EM.stop_event_loop
+            ASS.stop
             # don't ack.
           end
           
@@ -279,7 +288,7 @@ module ASS
       # the routing key is also used as the name of the client
       key = opts.delete :key
       @client_exchange = MQ.direct @server.client_name, opts
-      @key = key ? key.to_s : @server.client_name
+      @key = key ? key.to_s : @server.name
     end
 
     def rpc(opts={})
@@ -363,7 +372,7 @@ module ASS
       # if no routing key is given, use receiver's name as the routing key.
       # opts[:routing_key] will override :key in MQ::Exchange#publish
       ASS.call(@server.exchange.name,payload, {
-                 :key => self.key,
+                 :key => opts.delete(:key) || self.key,
                  :reply_to => self.name}.merge(opts))
     end
 
