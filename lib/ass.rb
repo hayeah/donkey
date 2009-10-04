@@ -20,7 +20,6 @@ module ASS
       EM.run {
         @mq = ::MQ.new(AMQP.start(settings))
         # ASS and its worker threads (EM.threadpool) should share the same MQ instance.
-        self.const_set("MQ",@mq) # TODO remove this hack. 
         yield if block_given?
       }
     end
@@ -34,21 +33,12 @@ module ASS
     def mq
       @mq
     end
-    
-    def MQ
-      @mq
+
+    def cast(name,method,data,opts,meta)
+      call(name,method,data,opts.merge(:reply_to => nil),meta)
     end
-
-    # we can determine whether a message is cast or call by looking at he reply_to field
-#     def call(name,method,data,opts,meta)
-#       publish("call",name,method,data,opts,meta)
-#     end
-
-#     def call(name,method,data,opts,meta)
-#       publish("cast",name,method,data,opts,meta)
-#     end
-
-    def publish(name,method,data,opts,meta)
+    
+    def call(name,method,data,opts,meta)
       payload = {
         #:type => type,
         :method => method,
@@ -61,7 +51,7 @@ module ASS
       # object for the sole purpose of publishing
       # the message. Will not clobber existing
       # server already started in the process.
-      MQ.direct(name,:no_declare => true).publish(::Marshal.dump(payload),opts)
+      @mq.direct(name,:no_declare => true).publish(::Marshal.dump(payload),opts)
       true
     end
 
@@ -72,33 +62,27 @@ module ASS
   # non-destructive get. Fail if server's not started.
 
   # def self.get(name)
-#     ASS::Server.new(name,:no_declare => true)
-#   end
+  #     ASS::Server.new(name,:no_declare => true)
+  #   end
 
-#   def self.new(*args,&block)
-#     self.server(*args,&block)
-#   end
+  #   def self.new(*args,&block)
+  #     self.server(*args,&block)
+  #   end
 
   
-#   def self.client(name,opts={})
-#     ASS.get(name).client(opts)
-#   end
+  #   def self.client(name,opts={})
+  #     ASS.get(name).client(opts)
+  #   end
 
-#   def self.topic(name,opts={})
-#     ASS::Topic.new(name,opts)
-#   end
+  #   def self.topic(name,opts={})
+  #     ASS::Topic.new(name,opts)
+  #   end
 
-#   def self.rpc(name,opts={})
-#     self.get(name).rpc(opts)
-#   end
+  #   def self.rpc(name,opts={})
+  #     self.get(name).rpc(opts)
+  #   end
 
-  # sometime you just want to respond to the reply_to
-  # of a message without anything else.
-  def self.call(name,data=nil,opts={})
-    MQ.direct(name,:no_declare => true).publish(::Marshal.dump(data),opts)
-    true
-  end
-
+  
   def self.peep(server_name,callback=nil,&block)
     callback = block if callback.nil?
     callback = Module.new {
@@ -113,72 +97,72 @@ module ASS
     ASS::Peeper.new(server_name,callback)
   end
   
-#   module Callback
-#     module MagicMethods
-#       def requeue
-#         throw(:__ass_requeue)
-#       end
-      
-#       def discard
-#         throw(:__ass_discard)
-#       end
-      
-#       def header
-#         @__header__
-#       end
+  #   module Callback
+  #     module MagicMethods
+  #       def requeue
+  #         throw(:__ass_requeue)
+  #       end
+  
+  #       def discard
+  #         throw(:__ass_discard)
+  #       end
+  
+  #       def header
+  #         @__header__
+  #       end
 
-#       def service
-#         @__service__
-#       end
-      
-#       def call(method,data,opts={},meta=nil)
-#         @__service__.call(method,data,opts)
-#       end
+  #       def service
+  #         @__service__
+  #       end
+  
+  #       def call(method,data,opts={},meta=nil)
+  #         @__service__.call(method,data,opts)
+  #       end
 
-#       def cast(method,data,opts={},meta=nil)
-#         @__service__.call(method,data,opts)
-#       end
-#     end
+  #       def cast(method,data,opts={},meta=nil)
+  #         @__service__.call(method,data,opts)
+  #       end
+  #     end
 
-#     # called to initiate a callback
-#     def build_callback(callback)
-#       c = case callback
-#           when Proc
-#             Class.new &callback
-#           when Class
-#             callback
-#           when Module
-#             Class.new { include callback }
-#           when Object
-#             callback # use singleton object as callback
-#           end
-#       case c
-#       when Class
-#         c.instance_eval { include MagicMethods }
-#       else
-#         c.extend MagicMethods
-#       end
-#       c
-#     end
+  #     # called to initiate a callback
+  #     def build_callback(callback)
+  #       c = case callback
+  #           when Proc
+  #             Class.new &callback
+  #           when Class
+  #             callback
+  #           when Module
+  #             Class.new { include callback }
+  #           when Object
+  #             callback # use singleton object as callback
+  #           end
+  #       case c
+  #       when Class
+  #         c.instance_eval { include MagicMethods }
+  #       else
+  #         c.extend MagicMethods
+  #       end
+  #       c
+  #     end
 
-#     # called for each request
-#     def prepare_callback(callback,info,payload)
-#       # method,data
-#       if callback.is_a? Class
-#         if callback.respond_to? :version
-#           klass = callback.get_version(payload[:version])
-#         else
-#           klass = callback
-#         end
-#         obj = klass.new
-#       else
-#         obj = callback
-#       end
-#       obj.instance_variable_set("@__service__",self)
-#       obj.instance_variable_set("@__header__",info)
-#       obj
-#     end
-#   end
+  #     # called for each request
+  #     def prepare_callback(callback,info,payload)
+  #       # method,data
+  #       if callback.is_a? Class
+  #         if callback.respond_to? :version
+  #           klass = callback.get_version(payload[:version])
+  #         else
+  #           klass = callback
+  #         end
+  #         obj = klass.new
+  #       else
+  #         obj = callback
+  #       end
+  #       obj.instance_variable_set("@__service__",self)
+  #       obj.instance_variable_set("@__header__",info)
+  #       obj
+  #     end
+  #   end
 
   class Server
     #include Callback
@@ -188,7 +172,7 @@ module ASS
       @name = name
       key = opts.delete :key
       @key = key ? key.to_s : @name
-      @exchange = MQ.direct(name,opts)
+      @exchange = ASS.mq.direct(name,opts)
     end
 
     def exchange
@@ -197,7 +181,7 @@ module ASS
 
     def queue(opts={})
       unless @queue
-        @queue ||= MQ.queue(self.name,opts)
+        @queue ||= ASS.mq.queue(self.name,opts)
         @queue.bind(self.exchange,:routing_key => self.key)
       end
       self
@@ -223,13 +207,7 @@ module ASS
         callback = prepare_callback(@callback,info,payload)
         operation = proc {
           with_handlers do
-            if info.reply_to
-              # call
-              callback.send(:on_call,payload[:data])
-            else
-              callback.send(:on_cast,payload[:data])
-              callback.discard
-            end
+            callback.send(:on_call,payload[:data])
           end
         }
         done = proc { |result|
@@ -244,18 +222,29 @@ module ASS
           ## option is given.
           case status = result[0]
           when :ok
-            # respond back to client with processed data
-            ASS.call(info.reply_to, payload.merge(:data => result[1]),
-                     :routing_key => info.routing_key,
-                     :message_id => info.message_id) if info.reply_to
+            if info.reply_to
+              data = result[1]
+              # respond with cast (we don't want
+              # to get a response to our response,
+              # then respond to the response of
+              # this response, and so on.)
+              ASS.cast(info.reply_to,
+                       payload[:method],
+                       data, {
+                         :routing_key => info.routing_key,
+                         :message_id => info.message_id},
+                       payload[:meta])
+            end
             info.ack if @ack
           when :requeue
             # resend the same message
-            ASS.call(self.name,payload,{
+            ASS.call(self.name,
+                     payload[:method],
+                     payload[:data], {
                        :reply_to => info.reply_to,
                        :routing_key => info.routing_key,
-                       :message_id => info.message_id
-                     })
+                       :message_id => info.message_id},
+                     payload[:meta])
             info.ack if @ack
           when :discard
             # no response back to client
@@ -267,7 +256,6 @@ module ASS
               begin
                 callback.on_error(error,payload[:data])
                 info.ack if @ack # successful error handling
-                p [:success]
               rescue => more_error
                 puts "error when handling on_error"
                 p more_error
@@ -282,32 +270,31 @@ module ASS
             end
             # don't ack.
           end
-          
         }
         EM.defer operation, done
       end
       self
     end
 
-    def call(name,method,data,opts={},meta=nil)
+    def call(name,data,opts={},meta=nil)
       reply_to = opts[:reply_to] || self.name
       key = opts[:key] || self.key
-      ASS.publish(name,
-                  method,
-                  data,
-                  opts.merge(:key => key, :reply_to => reply_to),
-                  meta)
+      ASS.call(name,
+               method=nil,
+               data,
+               opts.merge(:key => key, :reply_to => reply_to),
+               meta)
       
     end
 
-    def cast(name,method,data,opts={},meta=nil)
+    def cast(name,data,opts={},meta=nil)
       reply_to = nil # the remote server will not reply
       key = opts[:key] || self.key
-      ASS.publish(name,
-                  method,
-                  data,
-                  opts.merge(:key => key, :reply_to => nil),
-                  meta)
+      ASS.call(name,
+               method=nil,
+               data,
+               opts.merge(:key => key, :reply_to => nil),
+               meta)
     end
 
     def inspect
