@@ -149,12 +149,20 @@ class ASS::Server
       @__header__
     end
 
-    def meta
-      @__meta__
+    def method
+      @__method__
     end
 
     def data
       @__data__
+    end
+
+    def meta
+      @__meta__
+    end
+
+    def version
+      @__version__
     end
 
     def call(service,method,data=nil,opts={})
@@ -201,8 +209,10 @@ class ASS::Server
     end
     obj.instance_variable_set("@__service__",self)
     obj.instance_variable_set("@__header__",header)
+    obj.instance_variable_set("@__method__",payload[:method])
     obj.instance_variable_set("@__data__",payload[:data])
     obj.instance_variable_set("@__meta__",payload[:meta])
+    obj.instance_variable_set("@__version__",payload[:version])
     obj
   end
 

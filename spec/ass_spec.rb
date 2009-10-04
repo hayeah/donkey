@@ -64,9 +64,10 @@ describe "ASS" do
       $stderr.string.should_not be_empty
       EM.reactor_running?.should == false
     rescue => e
-      $stderr = old_stderr
       ASS.stop
       raise e
+    ensure
+      $stderr = old_stderr
     end
   end
   
@@ -151,10 +152,19 @@ describe "ASS" do
       20.times.map { q2.pop }.uniq.should == [2]
     end
 
-#     it "should have access to magic service methods" do
-#       server(opts={}) {
-#       }
-#     end
+    it "should have access to magic service methods" do
+      q = Queue.new
+      s = server { |i|
+        q << [header,method,data,meta]
+      }
+      s.cast("spec",1,{},:meta)
+      header,method,data,meta = q.pop
+      p header.class
+      header.should be_an(MQ::Header)
+      method.should be_nil
+      data.should == 1
+      meta.should == :meta
+    end
 
     it "has some weirdness with pending, perhaps?" do
       pending
