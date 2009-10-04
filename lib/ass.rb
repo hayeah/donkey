@@ -7,7 +7,7 @@ module ASS
   
   class << self
     def server(name,opts={},&block)
-      s = ASS::Server.new(name,opts={})
+      s = ASS::Server.new(name,opts)
       if block
         s.react(&block)
       end
@@ -181,7 +181,7 @@ module ASS
 
     def queue(opts={})
       unless @queue
-        @queue ||= ASS.mq.queue(self.name,opts)
+        @queue ||= ASS.mq.queue("#{self.name}--#{self.key}",opts)
         @queue.bind(self.exchange,:routing_key => self.key)
       end
       self
@@ -393,115 +393,7 @@ module ASS
       end
     end
   end
-
-#   class Client
-#     include Callback
-
-#     attr_reader :key
-#     # takes options available to MQ::Exchange
-#     def initialize(server,opts={})
-#       @server = server
-#       # the routing key is also used as the name of the client
-#       key = opts.delete :key
-#       @client_exchange = MQ.direct @server.client_name, opts
-#       @key = key ? key.to_s : @server.name
-#     end
-
-#     def rpc(opts={})
-#       @rpc ||= @server.rpc(opts)
-#     end
-
-#     def name
-#       self.exchange.name
-#     end
-
-#     def exchange
-#       @client_exchange
-#     end
-
-#     # takes options available to MQ::Queue
-#     def queue(opts={})
-#       unless @queue
-#         # if key is not given, the queue name is
-#         # the same as the exchange name.
-#         @queue ||= MQ.queue("#{self.name}#{@key}",opts)
-#         @queue.bind(self.exchange,:routing_key => self.key)
-#       end
-#       self # return self to allow chaining
-#     end
-
-#     # takes options available to MQ::Queue#subscribe
-#     def react(callback=nil,opts=nil,&block)
-#       if block
-#         opts = callback
-#         callback = block
-#       end
-#       opts = {} if opts.nil?
-
-#       # second call would just swap out the callback.
-#       @callback = build_callback(callback)
-
-#       return(self) if @subscribed
-#       @subscribed = true
-#       @ack = opts[:ack]
-#       self.queue unless @queue
-#       @queue.subscribe(opts) do |info,payload|
-#         operation = proc {
-#           begin
-#             payload2 = ::Marshal.load(payload)
-#             obj = prepare_callback(@callback,info,payload2)
-#             obj.send(payload2[:method],payload2[:data])
-#             [:ok]
-#           rescue
-#             [:error,$!]
-#           end
-#         }
-#         done = proc { |result|
-#           # not actually doing anything with result
-#           info.ack if @ack
-#           case result[0]
-#           when :ok
-#             # do nothing
-#           when :error
-#             e = result[1]
-#             p e
-#             puts e.backtrace
-#             # unhandled error should break ASS
-#             EM.stop_event_loop
-#           end
-#         }
-#         EM.defer operation, done
-#       end
-#       self
-#     end
-
-#     # we can redirect the result to some other
-#     # place by setting a combination of
-#     # :routing_key (alias :key)
-#     # :reply_to
-#     def call(method,data=nil,opts={})
-#       # opts passed to publish
-#       payload = {
-#         :method => method,
-#         :data => data,
-#       }
-#       # if no routing key is given, use receiver's name as the routing key.
-#       # opts[:routing_key] will override :key in MQ::Exchange#publish
-#       ASS.call(@server.exchange.name,payload, {
-#                  :key => opts.delete(:key) || self.key,
-#                  :reply_to => self.name}.merge(opts))
-#     end
-
-#     # for casting, just null the reply_to field, so server doesn't respond.
-#     def cast(method,data=nil,opts={})
-#       self.call(method,data,opts.merge({:reply_to => nil}))
-#     end
-    
-#     def inspect
-#       "#<#{self.class} #{self.name}>"
-#     end
-#   end
-
+  
 #   # assumes server initializes it with an exclusive and auto_delete queue.
 #   class RPC
 #     require 'thread'

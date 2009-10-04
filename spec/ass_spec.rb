@@ -19,14 +19,40 @@ describe "ASS" do
             end
           end
           q << :ready
-        }}
+        }
+        q << :done
+      }
       thread.abort_on_exception = true
       q.pop.should == :ready
       s.cast("spec",0)
       q.pop.should == :ok
       ASS.stop
-      thread.join
+      q.pop.should == :done
     end
+  end
+
+  it "should stop ASS if server does not respond to on_error" do
+    q = Queue.new
+    s = nil
+    t = Thread.new {
+      ASS.start {
+        s = ASS.server("spec") {
+          define_method :on_call do |i|
+            raise "ouch" if i == :die
+            q << :ok
+            i
+          end
+        }
+        q << :ready
+      }
+      q << :died
+    }
+    q.pop.should == :ready
+    s.cast("spec",1)
+    q.pop.should == :ok
+    s.call("spec",:die)
+    q.pop.should == :died
+    EM.reactor_running?.should == false
   end
   
   describe "server" do
@@ -88,8 +114,47 @@ describe "ASS" do
         errors.pop.should be_a(RuntimeError)
       }
     end
+
+    it "should route according to key" do
+      q0 = Queue.new
+      q1 = Queue.new
+      q2 = Queue.new
+      s0 = ASS.server("spec") {
+        define_method :on_call do |i|
+          q0 << i
+          i
+        end
+      }
+      s1 = ASS.server("spec",:key => "s1") {
+        define_method :on_call do |i|
+          q1 << i
+          i
+        end
+      }
+      s2 = ASS.server("spec",:key => "s2") {
+        define_method :on_call do |i|
+          q2 << i
+          i
+        end
+      }
+      10.times { s0.cast("spec",0) }
+      10.times { s1.cast("spec",1) }
+      10.times { s2.cast("spec",2) }
+      10.times { s1.cast("spec", 0, :key => "spec") }
+      10.times { s2.cast("spec", 0, :key => "spec") }
+      10.times { s1.cast("spec", 2, :key => "s2") }
+      10.times { s2.cast("spec", 1, :key => "s1") }
+      30.times.map { q0.pop }.uniq.should == [0]
+      20.times.map { q1.pop }.uniq.should == [1]
+      20.times.map { q2.pop }.uniq.should == [2]
+    end
+
+    it "has some weirdness with pending, perhaps?" do
+      pending
+    end
     
   end
+  
 end
 
 # describe "ASS" do
@@ -152,25 +217,25 @@ end
 #           i
 #         end
 #       }
-#       c1 = client(:key => "c1") {
+#       s1 = client(:key => "s1") {
 #         define_method :foo do |i|
 #           q1 << i
 #           i
 #         end
 #       }
-#       c2 = client(:key => "c2") {
+#       s2 = client(:key => "s2") {
 #         define_method :foo do |i|
 #           q2 << i
 #           i
 #         end
 #       }
 #       10.times { c0.call(:foo,0) }
-#       10.times { c1.call(:foo,1) }
-#       10.times { c2.call(:foo,2) }
-#       10.times { c1.call(:foo, 0, :key => "spec") }
-#       10.times { c2.call(:foo, 0, :key => "spec") }
-#       10.times { c1.call(:foo, 2, :key => "c2") }
-#       10.times { c2.call(:foo, 1, :key => "c1") }
+#       10.times { s1.call(:foo,1) }
+#       10.times { s2.call(:foo,2) }
+#       10.times { s1.call(:foo, 0, :key => "spec") }
+#       10.times { s2.call(:foo, 0, :key => "spec") }
+#       10.times { s1.call(:foo, 2, :key => "s2") }
+#       10.times { s2.call(:foo, 1, :key => "s1") }
 #       30.times.map { q0.pop }.uniq.should == [0]
 #       20.times.map { q1.pop }.uniq.should == [1]
 #       20.times.map { q2.pop }.uniq.should == [2]
@@ -245,10 +310,10 @@ end
 # #           i
 # #         end
 # #       end
-# #       c1 = client
+# #       s1 = client
 # #       t0 = Time.now
-# #       f1 = c1.rpc.call(:foo,0.5)
-# #       f2 = c1.rpc.call(:foo,0.5)
+# #       f1 = s1.rpc.call(:foo,0.5)
+# #       f2 = s1.rpc.call(:foo,0.5)
 # #       r1,r2 = f1.wait, f2.wait
 # #       t1 = Time.now
 # #       (t1-t0).should be_close(0.5,0.2)
@@ -262,23 +327,23 @@ end
 # #           i
 # #         end
 # #       end
-# #       c1 = client
-# #       c2 = client
+# #       s1 = client
+# #       s2 = client
 # #       # the server should've processed message from both rpc clients
 # #       msgs.size.times.map {
 # #         msgs.pop
 # #       }.uniq.sort == [1,2]
 # #       # two different rpc clients
-# #       c1.rpc.should_not == c2.rpc
+# #       s1.rpc.should_not == s2.rpc
 # #       # make sure that even though the server
 # #       # serves both clients, each client's stream
 # #       # of messages don't get mixed up
 # #       10.times.map {
-# #         c1.rpc.call(:foo,1)
+# #         s1.rpc.call(:foo,1)
 # #       }.map(&:wait).uniq.should == [1]
 
 # #       10.times.map {
-# #         c2.rpc.call(:foo,2)
+# #         s2.rpc.call(:foo,2)
 # #       }.map(&:wait).uniq.should == [2]
 # #     end
 # #   end
@@ -397,8 +462,8 @@ end
 # #         }
 # #         p answers
         
-# # #         rs.should include(:c1)
-# # #         rs.should include(:c2)
+# # #         rs.should include(:s1)
+# # #         rs.should include(:s2)
 # #       end
       
 # #     end
