@@ -56,7 +56,6 @@ module ASS
       @mq.direct(name,:no_declare => true).publish(::Marshal.dump(payload),opts)
       true
     end
-
   end
   
 

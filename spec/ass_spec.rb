@@ -4,6 +4,8 @@ require "spec"
 require 'rant/spec'
 require 'thread'
 
+require 'eventmachine'
+EM.threadpool_size = 1
 
 describe "ASS" do
   include Rant::Check
@@ -159,16 +161,27 @@ describe "ASS" do
       }
       s.cast("spec",1,{},:meta)
       header,method,data,meta = q.pop
-      p header.class
       header.should be_an(MQ::Header)
       method.should be_nil
       data.should == 1
       meta.should == :meta
     end
 
+    it "should use a new callback instance to process each request" do
+      q = Queue.new
+      s = server { |i|
+        q << self
+        i
+      }
+      300.times { s.cast("spec",1) }
+      ids = 300.times.map { q.pop.object_id }
+      ids.uniq.length.should == ids.length
+    end
+
     it "has some weirdness with pending, perhaps?" do
       pending
     end
+
     
   end
   

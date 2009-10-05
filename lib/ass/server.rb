@@ -1,6 +1,4 @@
 class ASS::Server
-  #include Callback
-
   attr_reader :name, :key
   def initialize(name,opts={})
     @name = name
@@ -36,12 +34,14 @@ class ASS::Server
     @subscribed = true
     @ack = opts[:ack]
     self.queue unless @queue
+
+    # yikes!! potential for scary bugs
     @queue.subscribe(opts) do |info,payload|
       payload = ::Marshal.load(payload)
-      callback = prepare_callback(@callback,info,payload)
+      callback_object = prepare_callback(@callback,info,payload)
       operation = proc {
         with_handlers do
-          callback.send(:on_call,payload[:data])
+          callback_object.send(:on_call,payload[:data])
         end
       }
       done = proc { |result|
@@ -86,9 +86,9 @@ class ASS::Server
         when :error
           # programmatic error. don't ack
           error = result[1]
-          if callback.respond_to?(:on_error)
+          if callback_object.respond_to?(:on_error)
             begin
-              callback.on_error(error,payload[:data])
+              callback_object.on_error(error,payload[:data])
               info.ack if @ack # successful error handling
             rescue => more_error
               $stderr.puts more_error
