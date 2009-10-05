@@ -72,7 +72,58 @@ describe "ASS" do
       $stderr = old_stderr
     end
   end
+
   
+  it "should resend a message if server did not ack a message" do
+    begin
+      old_stderr = $stderr
+      error_output = StringIO.new
+      $stderr = error_output
+      q = Queue.new
+      s = nil
+      t1 = Thread.new {
+        ASS.start {
+          s = ASS.server("spec").react(:ack => true) do
+            define_method(:on_call) do |i|
+              raise "ouch" if i == :die
+              q << [header,i]
+              i
+            end
+          end
+          q << :ready
+        }
+        q << :died
+      }
+      q.pop.should == :ready
+      s.cast("spec",1)
+      header, msg = q.pop
+      msg.should == 1
+      header.redelivered != true
+      s.cast("spec",:die)
+      q.pop.should == :died
+      t1.join
+      $stderr.string.should_not be_empty
+      EM.reactor_running?.should == false
+
+      # restart server to get have the message resent
+      t2 = Thread.new {
+        ASS.start {
+          s = server { |msg|
+            q << [header,msg]
+          }
+        }
+      }
+      header, msg = q.pop
+      msg.should == :die
+      header.redelivered == true
+      ASS.stop
+      t2.join
+    ensure
+      $stderr = old_stderr
+      ASS.stop
+    end
+  end
+    
   describe "server" do
     before do
       q = Queue.new
@@ -167,21 +218,89 @@ describe "ASS" do
       meta.should == :meta
     end
 
+
     it "should use a new callback instance to process each request" do
       q = Queue.new
       s = server { |i|
         q << self
         i
       }
-      300.times { s.cast("spec",1) }
-      ids = 300.times.map { q.pop.object_id }
+      2000.times {|i|
+        begin
+          s.cast("spec",1)
+        rescue => e
+          p "broken at #{i}"
+          raise e
+        end
+      }
+      # we need to hold on to the saved pointers,
+      # otherwise objects would get garbage
+      # collected and their object_ids
+      # reused. This is the case with C-ruby.
+      saved_pointers = []
+      ids = (0...2000).map {
+        o = q.pop
+        saved_pointers << o
+        o.object_id
+      }
+      #pp s.objs
       ids.uniq.length.should == ids.length
     end
+    
+    
+    
 
-    it "has some weirdness with pending, perhaps?" do
-      pending
+    it "should receive messages in order from a connection" do
+      q = Queue.new
+      s = server do |i|
+        q << i
+        i
+      end
+      100.times { |i|
+        s.cast("spec",i)
+      }
+      100.times { |i|
+        q.pop == i
+      }
     end
 
+    it "should resend message" do
+      i = 0
+      q = Queue.new
+      s = server do |data|
+        q << [header,method,data,meta]
+        # requeue the first 100 messages
+        i += 1
+        if i <= 100
+          resend
+        end
+        true
+      end
+      100.times { |i|
+        s.cast("spec",i,{ :message_id => i }, i)
+      }
+      # the first 100 should be the same message as the messages to 200
+      
+      msgs100 = 100.times.map { q.pop }
+      msgs200 = 100.times.map { q.pop }
+      msgs100.zip(msgs200) { |m1,m2|
+        header1,method1,data1,meta1 = m1
+        header2,method2,data2,meta2 = m2
+
+        # everything should be the same except the delivery_tag
+        header2.delivery_tag.should_not == header1.delivery_tag
+        # requeue is different from AMQP's redelivery
+        ## it should resend the message as another one.
+        header1.redelivered.should_not == true
+        header2.redelivered.should_not == true
+        
+        header2.message_id.should == header2.message_id
+        method2.should == method1
+        data2.should == data1
+        meta1.should == meta2
+      }
+      
+    end
     
   end
   
