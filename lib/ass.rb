@@ -4,6 +4,7 @@ require 'mq'
 module ASS; end
 require 'ass/amqp' # monkey patch stolen from nanite.
 require 'ass/server' # monkey patch stolen from nanite.
+require 'ass/callback_factory'
 require 'ass/rpc'
 # TODO a way to specify serializer (json, marshal...)
 module ASS

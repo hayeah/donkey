@@ -28,7 +28,7 @@ class ASS::Server
     _opts = {} if _opts.nil?
     
     # second call would just swap out the callback.
-    @callback = build_callback(_callback)
+    @factory = ASS::CallbackFactory.new(_callback)
     
     return(self) if @subscribed
     @subscribed = true
@@ -39,7 +39,7 @@ class ASS::Server
     @queue.subscribe(_opts) do |info,payload|
       payload = ::Marshal.load(payload)
       #p [info,payload]
-      callback_object = prepare_callback(@callback,info,payload)
+      callback_object = @factory.callback_for(self,info,payload)
       proc { #|callback_object=prepare_callback(@callback,info,payload)|
         operation = proc {
           with_handlers do
@@ -140,86 +140,6 @@ class ASS::Server
   end
 
   private
-
-  module ServiceMethods
-    def resend
-      throw(:__ass_resend)
-    end
-    
-    def discard
-      throw(:__ass_discard)
-    end
-    
-    def header
-      @__header__
-    end
-
-    def method
-      @__method__
-    end
-
-    def data
-      @__data__
-    end
-
-    def meta
-      @__meta__
-    end
-
-    def version
-      @__version__
-    end
-
-    def call(service,method,data=nil,opts={})
-      @__service__.call(method,data,opts)
-    end
-
-    def cast(service,method,data=nil,opts={})
-      @__service__.cast(method,data,opts)
-    end
-  end
-  
-  def build_callback(callback)
-    c = case callback
-        when Proc
-          Class.new &callback
-        when Class
-          callback
-        when Module
-          Class.new { include callback }
-        when Object
-          callback # use singleton objcet as callback
-        end
-    case c
-    when Class
-      c.instance_eval { include ServiceMethods }
-    else
-      c.extend ServiceMethods
-    end
-    c
-  end
-
-  # called for each request
-  def prepare_callback(callback,header,payload)
-    # method,data
-    if callback.is_a? Class
-      if callback.respond_to? :version
-        klass = callback.get_version(payload[:version])
-      else
-        klass = callback
-      end
-      obj = klass.new
-    else
-      obj = callback
-    end
-    obj.instance_variable_set("@__service__",self)
-    obj.instance_variable_set("@__header__",header)
-    obj.instance_variable_set("@__method__",payload[:method])
-    obj.instance_variable_set("@__data__",payload[:data])
-    obj.instance_variable_set("@__meta__",payload[:meta])
-    obj.instance_variable_set("@__version__",payload[:version])
-    obj
-  end
 
   def with_handlers
     not_discarded = false
