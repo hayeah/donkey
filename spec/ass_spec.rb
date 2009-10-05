@@ -18,25 +18,43 @@ describe "ASS" do
     }
   end
 
+  def call(data,opts={},meta=nil)
+    ASS.call("spec",nil,data,{
+               :key => "spec",
+               :reply_to => "spec"
+             }.merge(opts),meta)
+  end
+
+  def cast(data,opts={},meta=nil)
+    #p({ :key => "spec" }.merge(opts))
+    ASS.cast("spec",nil,data,{ :key => "spec" }.merge(opts),meta)
+  end
+
+
   it "should start and stop" do
     30.times do
-      q = Queue.new
-      s = nil
-      thread = Thread.new {
-        ASS.start {
-          s = server("spec") do |i|
-            q << :ok
-          end
-          q << :ready
+      begin
+        q = Queue.new
+        s = nil
+        thread = Thread.new {
+          ASS.start {
+            s = server("spec") do |i|
+              q << :ok
+            end
+            q << :ready
+          }
+          q << :done
         }
-        q << :done
-      }
-      thread.abort_on_exception = true
-      q.pop.should == :ready
-      s.cast("spec",0)
-      q.pop.should == :ok
-      ASS.stop
-      q.pop.should == :done
+        thread.abort_on_exception = true
+        q.pop.should == :ready
+        cast(0)
+        q.pop.should == :ok
+        ASS.stop
+        q.pop.should == :done
+      rescue => e
+        ASS.stop
+        raise e
+      end
     end
   end
 
@@ -59,9 +77,9 @@ describe "ASS" do
         q << :died
       }
       q.pop.should == :ready
-      s.cast("spec",1)
+      cast(1)
       q.pop.should == :ok
-      s.call("spec",:die)
+      call(:die)
       q.pop.should == :died
       $stderr.string.should_not be_empty
       EM.reactor_running?.should == false
@@ -95,11 +113,11 @@ describe "ASS" do
         q << :died
       }
       q.pop.should == :ready
-      s.cast("spec",1)
+      cast(1)
       header, msg = q.pop
       msg.should == 1
       header.redelivered != true
-      s.cast("spec",:die)
+      cast(:die)
       q.pop.should == :died
       t1.join
       $stderr.string.should_not be_empty
@@ -151,7 +169,7 @@ describe "ASS" do
       # note that when calling self we have the
       # wierdness of the response sending back to
       # self.
-      10.times { s.call("spec",0) }
+      10.times { call(0) }
       10.times.map { input.pop }.uniq.should == [0]
       10.times.map { output.pop }.uniq.should == [1]
     end
@@ -169,7 +187,7 @@ describe "ASS" do
           errors << e
         end
       }
-      10.times { s.call("spec",0) }
+      10.times { call(0) }
       10.times {
         msgs.pop.should == 0
         #errors.pop.is_a?(Exception).should == true
@@ -193,13 +211,14 @@ describe "ASS" do
         q2 << i
         i
       end
-      10.times { s0.cast("spec",0) }
-      10.times { s1.cast("spec",1) }
-      10.times { s2.cast("spec",2) }
-      10.times { s1.cast("spec", 0, :key => "spec") }
-      10.times { s2.cast("spec", 0, :key => "spec") }
-      10.times { s1.cast("spec", 2, :key => "s2") }
-      10.times { s2.cast("spec", 1, :key => "s1") }
+      10.times { s0.cast("spec",nil,0) }
+      10.times { s1.cast("spec",nil,1) }
+      10.times { s2.cast("spec",nil,2) }
+      10.times { s1.cast("spec",nil,0, :key => "spec") }
+      10.times { s2.cast("spec",nil,0, :key => "spec") }
+      10.times { s1.cast("spec",nil,2, :key => "s2") }
+      10.times { s2.cast("spec",nil,1, :key => "s1") }
+      
       30.times.map { q0.pop }.uniq.should == [0]
       20.times.map { q1.pop }.uniq.should == [1]
       20.times.map { q2.pop }.uniq.should == [2]
@@ -210,7 +229,7 @@ describe "ASS" do
       s = server { |i|
         q << [header,method,data,meta]
       }
-      s.cast("spec",1,{},:meta)
+      cast(1,{},:meta)
       header,method,data,meta = q.pop
       header.should be_an(MQ::Header)
       method.should be_nil
@@ -227,7 +246,7 @@ describe "ASS" do
       }
       2000.times {|i|
         begin
-          s.cast("spec",1)
+          cast(1)
         rescue => e
           p "broken at #{i}"
           raise e
@@ -247,9 +266,6 @@ describe "ASS" do
       ids.uniq.length.should == ids.length
     end
     
-    
-    
-
     it "should receive messages in order from a connection" do
       q = Queue.new
       s = server do |i|
@@ -257,7 +273,7 @@ describe "ASS" do
         i
       end
       100.times { |i|
-        s.cast("spec",i)
+        cast(i)
       }
       100.times { |i|
         q.pop == i
@@ -277,7 +293,7 @@ describe "ASS" do
         true
       end
       100.times { |i|
-        s.cast("spec",i,{ :message_id => i }, i)
+        cast(i,{ :message_id => i }, i)
       }
       # the first 100 should be the same message as the messages to 200
       
@@ -299,7 +315,6 @@ describe "ASS" do
         data2.should == data1
         meta1.should == meta2
       }
-      
     end
     
   end

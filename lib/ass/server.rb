@@ -114,22 +114,22 @@ class ASS::Server
     self
   end
 
-  def call(name,data,opts={},meta=nil)
+  def call(name,method,data,opts={},meta=nil)
     reply_to = opts[:reply_to] || self.name
     key = opts[:key] || self.key
     ASS.call(name,
-             method=nil,
+             method,
              data,
              opts.merge(:key => key, :reply_to => reply_to),
              meta)
     
   end
 
-  def cast(name,data,opts={},meta=nil)
+  def cast(name,method,data,opts={},meta=nil)
     reply_to = nil # the remote server will not reply
     key = opts[:key] || self.key
     ASS.call(name,
-             method=nil,
+             method,
              data,
              opts.merge(:key => key, :reply_to => nil),
              meta)
