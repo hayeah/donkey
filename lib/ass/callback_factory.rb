@@ -78,8 +78,8 @@ class ASS::CallbackFactory
           callback
         when Module
           Class.new { include callback }
-        when Object
-          callback # use singleton objcet as callback
+        else
+          raise "can build factory from one of Proc, Class, Module"
         end
     case c
     when Class
