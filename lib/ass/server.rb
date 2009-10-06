@@ -4,7 +4,7 @@ class ASS::Server
     @name = name
     key = opts.delete :key
     @key = key ? key.to_s : @name
-    @exchange = ASS.mq.direct(name,opts)
+    @exchange = ASS.mq.fanout(name,opts)
   end
 
   def exchange

@@ -196,6 +196,8 @@ describe "ASS" do
     end
 
     it "should route according to key" do
+      # no longer think this is a good idea.
+      pending
       q0 = Queue.new
       q1 = Queue.new
       q2 = Queue.new
