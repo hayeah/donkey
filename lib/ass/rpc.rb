@@ -1,6 +1,23 @@
+# A RPC client is a transient entity that dies
+# with the process that created it. Its purpose
+# is only to provide a synchronized interface to
+# the asynchronous services.
+require 'thread'
+require 'monitor'
 class ASS::RPC
-  require 'thread'
-  require 'monitor'
+  # stolen from nanite
+  def self.random_id
+      values = [
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x1000000),
+        rand(0x1000000),
+      ]
+      "%04x%04x%04x%04x%04x%06x%06x" % values
+  end
   
   class Future
     attr_reader :message_id
@@ -33,43 +50,46 @@ class ASS::RPC
     end
   end
 
-  class Reactor
-    # want to minimize name conflicts here.
-    def initialize(rpc)
-      @rpc = rpc
-    end
-
-    def method_missing(_method,data)
-      @rpc.buffer << [header,data]
-    end
-  end
-
+  attr_reader :name
   attr_reader :buffer, :futures, :ready
-  def initialize(server,opts={})
+  def initialize(opts={})
     raise "can't run rpc client in the same thread as eventmachine" if EM.reactor_thread?
     self.extend(MonitorMixin)
-    @server = server
     @seq = 0
     # queue is used be used to synchronize RPC
     # user thread and the AMQP eventmachine thread.
     @buffer = Queue.new
     @ready = {} # the ready results not yet waited
     @futures = {} # all futures not yet waited for.
-    @reactor = Reactor.new(self)
     # Creates an exclusive queue to serve the RPC client.
-    @client = @server.client(:key => "rpc.#{rand(999_999_999_999)}").
-      queue(:exclusive => true).react(@reactor,opts)
+    @name = ASS::RPC.random_id.to_s
+    buffer = @buffer # closure binding for reactor
+    reactor = proc {
+      define_method(:on_call) do |data|
+        buffer << [header,data]
+      end
+    }
+    @server = ASS.server(@name,:auto_delete => true, :key => "rpc").
+      queue(:exclusive => true,:auto_delete => true).
+      react(opts,&reactor) 
   end
 
-  def name
-    @client.key
-  end
-
-  def call(method,data=nil,opts={})
-    message_id = @seq.to_s # message gotta be unique for this RPC client.
-    @client.call method, data, opts.merge(:message_id => message_id)
-    @seq += 1
-    @futures[message_id] = Future.new(self,message_id)
+  def call(server_name,method,data=nil,opts={},meta=nil)
+    self.synchronize do
+      message_id = @seq.to_s # message gotta be unique for this RPC client.
+      # by default route message to the exchange @name@, with routing key @name@
+      ASS.call(server_name,
+               method,
+               data,
+               # can override this option
+               {:key => server_name}.merge(opts).
+               # can't override these options
+               merge(:message_id => message_id,
+                     :reply_to => @name),
+               meta)
+      @seq += 1
+      @futures[message_id] = Future.new(self,message_id)
+    end
   end
 
   # the idea is to block on a synchronized queue
@@ -79,12 +99,12 @@ class ASS::RPC
   # calling wait is the same as the EventMachine
   # thread.
   #
-  # It is safe (btw) to call wait within the
-  # Server and Client reactor methods, because
-  # they are invoked within their own EM
-  # deferred threads (so does not block the main
-  # EM reactor thread (which consumes the
-  # messages from queue)).
+  # It is safe (btw) to use the RPC client within
+  # an ASS server/actor, because the wait is in an
+  # EM worker thread, rather than the EM thread
+  # itself. The EM thread is still free to process
+  # the queue. CAVEAT: you could run out of EM
+  # worker threads.
   def wait(future,timeout=nil)
     return future.data if future.done? # future was waited before
     # we can have more fine grained synchronization later.
@@ -125,7 +145,7 @@ class ASS::RPC
           some_future.data = data
           if some_future == future
             # The future we are waiting for
-            EM.cancel_timer(timer)
+            EM.cancel_timer(timer) if timer
             ready_future = future
             break
           else
@@ -138,6 +158,7 @@ class ASS::RPC
       @futures.delete ready_future.message_id
       return ready_future.data
     end
+    
   end
 
   def waitall

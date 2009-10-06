@@ -66,16 +66,19 @@ module ASS
       @mq.direct(name,:no_declare => true).publish(::Marshal.dump(payload),opts)
       true
     end
+
+    def rpc(opts={})
+      ASS::RPC.new(opts)
+    end
+
   end
   
-
+  
   #   def self.topic(name,opts={})
   #     ASS::Topic.new(name,opts)
   #   end
 
-  #   def self.rpc(name,opts={})
-  #     self.get(name).rpc(opts)
-  #   end
+  
 
   
   # def self.peep(server_name,callback=nil,&block)
