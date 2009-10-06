@@ -13,6 +13,10 @@ class ASS::CallbackFactory
       @__header__
     end
 
+    def payload
+      @__payload__
+    end
+
     def method
       @__method__
     end
@@ -29,12 +33,12 @@ class ASS::CallbackFactory
       @__version__
     end
 
-    def call(service,method,data=nil,opts={})
-      @__service__.call(method,data,opts)
+    def call(name,method,data=nil,opts={},meta=nil)
+      @__service__.call(name,method,data,opts,meta)
     end
 
-    def cast(service,method,data=nil,opts={})
-      @__service__.cast(method,data,opts)
+    def cast(name,method,data=nil,opts={},meta=nil)
+      @__service__.cast(name,method,data,opts,meta)
     end
   end
   
@@ -56,6 +60,7 @@ class ASS::CallbackFactory
     end
     obj.instance_variable_set("@__service__",server)
     obj.instance_variable_set("@__header__",header)
+    obj.instance_variable_set("@__payload__",payload)
     obj.instance_variable_set("@__method__",payload[:method])
     obj.instance_variable_set("@__data__",payload[:data])
     obj.instance_variable_set("@__meta__",payload[:meta])

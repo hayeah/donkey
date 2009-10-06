@@ -5,6 +5,7 @@ module ASS; end
 require 'ass/amqp' # monkey patch stolen from nanite.
 require 'ass/server' # monkey patch stolen from nanite.
 require 'ass/callback_factory'
+require 'ass/actor'
 require 'ass/rpc'
 # TODO a way to specify serializer (json, marshal...)
 module ASS
@@ -12,6 +13,14 @@ module ASS
   class << self
     def server(name,opts={},&block)
       s = ASS::Server.new(name,opts)
+      if block
+        s.react(&block)
+      end
+      s
+    end
+
+    def actor(name,opts={},&block)
+      s = ASS::Actor.new(name,opts)
       if block
         s.react(&block)
       end
