@@ -7,6 +7,7 @@ require 'ass/server' # monkey patch stolen from nanite.
 require 'ass/callback_factory'
 require 'ass/actor'
 require 'ass/rpc'
+require 'ass/client'
 # TODO a way to specify serializer (json, marshal...)
 module ASS
 
@@ -25,6 +26,15 @@ module ASS
         s.react(&block)
       end
       s
+    end
+
+    def rpc(opts={})
+      ASS::RPC.new(opts)
+    end
+
+    # the opts is used to initiate an RPC
+    def client(opts={})
+      ASS::Client.new(opts)
     end
 
     #MQ = nil
@@ -66,11 +76,7 @@ module ASS
       @mq.direct(name,:no_declare => true).publish(::Marshal.dump(payload),opts)
       true
     end
-
-    def rpc(opts={})
-      ASS::RPC.new(opts)
-    end
-
+    
   end
   
   
