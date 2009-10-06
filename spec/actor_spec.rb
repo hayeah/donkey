@@ -67,10 +67,10 @@ describe "Actor" do
     a1 = ASS.actor("spec") {
       define_method(:foo) do |i|
         q << [:foo,i]
-        cast("spec",:bar,i+1,:key => "s1")
+        cast("spec2",:bar,i+1)
       end
     }
-    a2 = ASS.actor("spec",:key => "s1") do
+    a2 = ASS.actor("spec2") do
       define_method(:bar) do |i|
         q << [:bar,i]
       end
