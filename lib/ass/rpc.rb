@@ -20,8 +20,10 @@ class ASS::RPC
   end
   
   class Future
+    # TODO set meta
     attr_reader :message_id
-    attr_accessor :header, :data, :timeout
+    attr_accessor :header, :data, :method, :meta
+    attr_accessor :timeout
     def initialize(rpc,message_id)
       @message_id = message_id
       @rpc = rpc
@@ -62,16 +64,16 @@ class ASS::RPC
     @ready = {} # the ready results not yet waited
     @futures = {} # all futures not yet waited for.
     # Creates an exclusive queue to serve the RPC client.
-    @name = ASS::RPC.random_id.to_s
+    @rpc_id = ASS::RPC.random_id.to_s
     buffer = @buffer # closure binding for reactor
-    reactor = proc {
-      define_method(:on_call) do |data|
-        buffer << [header,data]
-      end
+    exchange = ASS.mq.direct("__rpc__")
+    queue = ASS.mq.queue("__rpc__#{@rpc_id}",
+                         :exclusive => true,:auto_delete => true)
+    queue.bind("__rpc__",:routing_key => @rpc_id)
+    queue.subscribe { |header,payload|
+      payload = ::Marshal.load(payload)
+      buffer << [header,payload]
     }
-    @server = ASS.server(@name,:auto_delete => true, :key => "rpc").
-      queue(:exclusive => true,:auto_delete => true).
-      react(opts,&reactor) 
   end
 
   def call(server_name,method,data=nil,opts={},meta=nil)
@@ -81,11 +83,10 @@ class ASS::RPC
       ASS.call(server_name,
                method,
                data,
-               # can override this option
-               {:key => server_name}.merge(opts).
                # can't override these options
-               merge(:message_id => message_id,
-                     :reply_to => @name),
+               opts.merge(:message_id => message_id,
+                          :reply_to => "__rpc__",
+                          :key => @rpc_id),
                meta)
       @seq += 1
       @futures[message_id] = Future.new(self,message_id)
@@ -126,9 +127,9 @@ class ASS::RPC
         ready_future = future
       else
         while true
-          header,data = @buffer.pop # synchronize. like erlang's mailbox select.
+          header,payload = @buffer.pop # synchronize. like erlang's mailbox select.
           if header == :timeout # timeout the future we are waiting for.
-            message_id = data
+            message_id = payload
             # if we got a timeout from previous wait. throw it away.
             next if future.message_id != message_id 
             future.timeout = true
@@ -136,13 +137,17 @@ class ASS::RPC
             @futures.delete future.message_id
             return yield # return the value of timeout block
           end
+          data = payload[:data]
           some_future = @futures[header.message_id]
           # If we didn't find the future among the
           # future, it must have timedout. Just
           # throw result away and keep processing.
-          next unless some_future 
+          next unless some_future
+          some_future.timeout = false
           some_future.header = header
           some_future.data = data
+          some_future.method = payload[:method]
+          some_future.meta = payload[:meta]
           if some_future == future
             # The future we are waiting for
             EM.cancel_timer(timer) if timer
