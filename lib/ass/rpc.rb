@@ -67,8 +67,10 @@ class ASS::RPC
     @rpc_id = ASS::RPC.random_id.to_s
     buffer = @buffer # closure binding for reactor
     exchange = ASS.mq.direct("__rpc__")
-    queue = ASS.mq.queue("__rpc__#{@rpc_id}",
-                         :exclusive => true,:auto_delete => true)
+    @name = "__rpc__#{@rpc_id}"
+    queue = ASS.mq.queue(@name,
+                         :exclusive => true,
+                         :auto_delete => true)
     queue.bind("__rpc__",:routing_key => @rpc_id)
     queue.subscribe { |header,payload|
       payload = ::Marshal.load(payload)
