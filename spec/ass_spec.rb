@@ -20,14 +20,12 @@ describe "ASS" do
 
   def call(data,opts={},meta=nil)
     ASS.call("spec",nil,data,{
-               :key => "spec",
                :reply_to => "spec"
              }.merge(opts),meta)
   end
 
   def cast(data,opts={},meta=nil)
-    #p({ :key => "spec" }.merge(opts))
-    ASS.cast("spec",nil,data,{ :key => "spec" }.merge(opts),meta)
+    ASS.cast("spec",nil,data,opts,meta)
   end
 
 
@@ -193,37 +191,6 @@ describe "ASS" do
         #errors.pop.is_a?(Exception).should == true
         errors.pop.should be_a(RuntimeError)
       }
-    end
-
-    it "should route according to key" do
-      # no longer think this is a good idea.
-      pending
-      q0 = Queue.new
-      q1 = Queue.new
-      q2 = Queue.new
-      s0 = server("spec") do |i|
-        q0 << i
-        i
-      end
-      s1 = server(:key => "s1") do |i|
-        q1 << i
-        i
-      end
-      s2 = server("spec",:key => "s2") do |i|
-        q2 << i
-        i
-      end
-      10.times { s0.cast("spec",nil,0) }
-      10.times { s1.cast("spec",nil,1) }
-      10.times { s2.cast("spec",nil,2) }
-      10.times { s1.cast("spec",nil,0, :key => "spec") }
-      10.times { s2.cast("spec",nil,0, :key => "spec") }
-      10.times { s1.cast("spec",nil,2, :key => "s2") }
-      10.times { s2.cast("spec",nil,1, :key => "s1") }
-      
-      30.times.map { q0.pop }.uniq.should == [0]
-      20.times.map { q1.pop }.uniq.should == [1]
-      20.times.map { q2.pop }.uniq.should == [2]
     end
 
     it "should have access to magic service methods" do

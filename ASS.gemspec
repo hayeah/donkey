@@ -9,7 +9,7 @@ Gem::Specification.new do |s|
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Howard Yeh"]
-  s.date = %q{2009-10-06}
+  s.date = %q{2009-10-19}
   s.email = %q{hayeah@gmail.com}
   s.extra_rdoc_files = [
     "LICENSE",
@@ -25,6 +25,7 @@ Gem::Specification.new do |s|
      "lib/ass/actor.rb",
      "lib/ass/amqp.rb",
      "lib/ass/callback_factory.rb",
+     "lib/ass/client.rb",
      "lib/ass/peeper.rb",
      "lib/ass/rpc.rb",
      "lib/ass/server.rb",
@@ -32,13 +33,15 @@ Gem::Specification.new do |s|
      "test/ass_test.rb",
      "test/test_helper.rb"
   ]
+  s.has_rdoc = true
   s.homepage = %q{http://github.com/hayeah/ass}
   s.rdoc_options = ["--charset=UTF-8"]
   s.require_paths = ["lib"]
-  s.rubygems_version = %q{1.3.5}
+  s.rubygems_version = %q{1.3.1}
   s.summary = %q{Asynchronous Service Stages for Distributed Services}
   s.test_files = [
     "spec/ass_spec.rb",
+     "spec/client_spec.rb",
      "spec/actor_spec.rb",
      "spec/rpc_spec.rb",
      "test/ass_test.rb",
@@ -47,7 +50,7 @@ Gem::Specification.new do |s|
 
   if s.respond_to? :specification_version then
     current_version = Gem::Specification::CURRENT_SPECIFICATION_VERSION
-    s.specification_version = 3
+    s.specification_version = 2
 
     if Gem::Version.new(Gem::RubyGemsVersion) >= Gem::Version.new('1.2.0') then
       s.add_runtime_dependency(%q<amqp>, [">= 0"])

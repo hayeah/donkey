@@ -1,12 +1,10 @@
 class ASS::Server
-  attr_reader :name, :key
+  attr_reader :name
   
   def initialize(name,opts={})
     @name = name
     # the server is a fanout (ignores routing key)
     @exchange = ASS.mq.fanout(name,opts)
-    key = opts.delete :key
-    @key = key ? key.to_s : @name
   end
 
   def exchange
@@ -15,8 +13,8 @@ class ASS::Server
 
   def queue(opts={})
     unless @queue
-      @queue ||= ASS.mq.queue("#{self.name}--#{self.key}",opts)
-      @queue.bind(self.exchange,:routing_key => self.key)
+      @queue ||= ASS.mq.queue(self.name,opts)
+      @queue.bind(self.exchange)
     end
     self
   end
@@ -118,22 +116,20 @@ class ASS::Server
 
   def call(name,method,data,opts={},meta=nil)
     reply_to = opts[:reply_to] || self.name
-    key = opts[:key] || self.key
     ASS.call(name,
              method,
              data,
-             opts.merge(:key => key, :reply_to => reply_to),
+             opts.merge(:reply_to => reply_to),
              meta)
     
   end
 
   def cast(name,method,data,opts={},meta=nil)
     reply_to = nil # the remote server will not reply
-    key = opts[:key] || self.key
     ASS.call(name,
              method,
              data,
-             opts.merge(:key => key, :reply_to => nil),
+             opts.merge(:reply_to => nil),
              meta)
   end
 
