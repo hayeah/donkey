@@ -114,6 +114,16 @@ class ASS::Server
     self
   end
 
+  # unsuscribe from the queue
+  def stop(&block) # allows callback
+    if block
+      @queue.unsubscribe(&block)
+    else
+      @queue.unsubscribe
+    end
+    @subscribed = false
+  end
+
   def call(name,method,data,opts={},meta=nil)
     reply_to = opts[:reply_to] || self.name
     ASS.call(name,

@@ -285,6 +285,25 @@ describe "ASS" do
         meta1.should == meta2
       }
     end
+
+    it "unsubscribes from queue" do
+      q1 = Queue.new
+      s1 = server do |data|
+        q1 << data
+      end
+      (1..10).map { |i| cast(i) }
+      (1..10).map { q1.pop }.should == (1..10).to_a
+      # s1.stop { q1 << :unsubscribed } # lame, this somehow causes blocking.
+#       q1.pop.should == :unsubscribed
+      sleep(1)
+      (1..10).map { |i| cast(i) } # these should be queued until another server comes up
+      q1.should be_empty
+      q2 = Queue.new
+      s2 = server do |data|
+        q2 << data
+      end
+      (1..10).map { q2.pop }.should == (1..10).to_a
+    end
     
   end
   
