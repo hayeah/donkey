@@ -1,15 +1,12 @@
 require 'rubygems'
 require "lib/ass"
 require "spec"
-require 'rant/spec'
 require 'thread'
 
 require 'eventmachine'
 EM.threadpool_size = 1
 
 describe "ASS" do
-  include Rant::Check
-
   def server(*args,&block)
     name = args.grep(String).first || "spec"
     opts = args.grep(Hash).first || {}
