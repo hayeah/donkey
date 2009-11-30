@@ -50,7 +50,7 @@ class ASS::CallbackFactory
     # method,data
     if @factory.is_a? Class
       if @factory.respond_to? :version
-        klass = @factory.get_version(payload[:version])
+        klass = @factory.get_version(payload["version"])
       else
         klass = @factory
       end
@@ -61,10 +61,10 @@ class ASS::CallbackFactory
     obj.instance_variable_set("@__service__",server)
     obj.instance_variable_set("@__header__",header)
     obj.instance_variable_set("@__payload__",payload)
-    obj.instance_variable_set("@__method__",payload[:method])
-    obj.instance_variable_set("@__data__",payload[:data])
-    obj.instance_variable_set("@__meta__",payload[:meta])
-    obj.instance_variable_set("@__version__",payload[:version])
+    obj.instance_variable_set("@__method__",payload["method"])
+    obj.instance_variable_set("@__data__",payload["data"])
+    obj.instance_variable_set("@__meta__",payload["meta"])
+    obj.instance_variable_set("@__version__",payload["version"])
     obj
   end
 

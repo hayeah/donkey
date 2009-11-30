@@ -43,7 +43,7 @@ class ASS::Server
       proc { #|callback_object=prepare_callback(@callback,info,payload)|
         operation = proc {
           with_handlers do
-            callback_object.send(:on_call,payload[:data])
+            callback_object.send(:on_call,payload["data"])
           end
         }
         done = proc { |result|
@@ -65,22 +65,22 @@ class ASS::Server
               # then respond to the response of
               # this response, and so on.)
               ASS.cast(info.reply_to,
-                       payload[:method],
+                       payload["method"],
                        data, {
                          :routing_key => info.routing_key,
                          :message_id => info.message_id},
-                       payload[:meta])
+                       payload["meta"])
             end
             info.ack if @ack
           when :resend
             # resend the same message
             ASS.call(self.name,
-                     payload[:method],
-                     payload[:data], {
+                     payload["method"],
+                     payload["data"], {
                        :reply_to => info.reply_to, # this could be nil for cast
                        :routing_key => info.routing_key,
                        :message_id => info.message_id},
-                     payload[:meta])
+                     payload["meta"])
             info.ack if @ack
           when :discard
             # no response back to client
@@ -90,7 +90,7 @@ class ASS::Server
             error = result[1]
             if callback_object.respond_to?(:on_error)
               begin
-                callback_object.on_error(error,payload[:data])
+                callback_object.on_error(error,payload["data"])
                 info.ack if @ack # successful error handling
               rescue => more_error
                 $stderr.puts more_error

@@ -70,14 +70,17 @@ module ASS
     end
     
     def call(name,method,data,opts,meta)
+      # make sure the payload hash use string
+      # keys. Serialization format might not
+      # preserve type.
       payload = {
         #:type => type,
-        :method => method,
-        :data => data,
-        :meta => meta,
+        "method" => method,
+        "data" => data,
+        "meta" => meta,
       }
-      payload.merge(:version => opts[:version]) if opts.has_key?(:version)
-      payload.merge(:meta => opts[:meta]) if opts.has_key?(:meta)
+      payload.merge("version" => opts[:version]) if opts.has_key?(:version)
+      payload.merge("meta" => opts[:meta]) if opts.has_key?(:meta)
       dummy_exchange(name).publish(ASS.serializer.dump(payload),opts)
       true
     end
