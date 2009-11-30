@@ -4,10 +4,10 @@ require 'rake'
 begin
   require 'jeweler'
   Jeweler::Tasks.new do |gem|
-    gem.name = "ASS"
+    gem.name = "donkey"
     gem.summary = "Asynchronous Service Stages for Distributed Services"
     gem.email = "hayeah@gmail.com"
-    gem.homepage = "http://github.com/hayeah/ass"
+    gem.homepage = "http://github.com/hayeah/donkey"
     gem.authors = ["Howard Yeh"]
     gem.add_dependency "amqp"
     gem.files = FileList["[A-Z]*", "{lib,test}/**/*"]
