@@ -1,7 +1,6 @@
 require 'rubygems'
 require "lib/ass"
 require "spec"
-require 'rant/spec'
 require 'thread'
 
 require 'eventmachine'

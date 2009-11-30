@@ -139,7 +139,7 @@ class ASS::RPC
             @futures.delete future.message_id
             return yield # return the value of timeout block
           end
-          data = payload[:data]
+          data = payload["data"]
           some_future = @futures[header.message_id]
           # If we didn't find the future among the
           # future, it must have timedout. Just
@@ -148,8 +148,8 @@ class ASS::RPC
           some_future.timeout = false
           some_future.header = header
           some_future.data = data
-          some_future.method = payload[:method]
-          some_future.meta = payload[:meta]
+          some_future.method = payload["method"]
+          some_future.meta = payload["meta"]
           if some_future == future
             # The future we are waiting for
             EM.cancel_timer(timer) if timer
