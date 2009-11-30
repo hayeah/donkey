@@ -37,7 +37,7 @@ class ASS::Server
 
     # yikes!! potential for scary bugs
     @queue.subscribe(_opts) do |info,payload|
-      payload = ::Marshal.load(payload)
+      payload = ASS.serializer.load(payload)
       #p [info,payload]
       callback_object = @factory.callback_for(self,info,payload)
       proc { #|callback_object=prepare_callback(@callback,info,payload)|

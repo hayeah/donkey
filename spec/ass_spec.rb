@@ -6,6 +6,12 @@ require 'thread'
 require 'eventmachine'
 EM.threadpool_size = 1
 
+require 'mocha'
+Spec::Runner.configure do |config|
+  config.mock_with :mocha
+end
+
+
 describe "ASS" do
   def server(*args,&block)
     name = args.grep(String).first || "spec"
@@ -136,6 +142,41 @@ describe "ASS" do
       ASS.stop
     end
   end
+
+  describe "serialization formats" do
+    def test_format(format)
+      q = Queue.new
+      @thread = Thread.new {ASS.start(:format => format
+                                      #:logging => true
+                                      ) {
+          q << :ready
+        }}
+      @thread.abort_on_exception = true
+      q.pop.should == :ready
+
+      server { |*args|
+        # do nothing
+        q << :got_msg
+      }
+      cast(:whatever)
+      q.pop.should == :got_msg
+      
+      ASS.stop
+      @thread.join
+    end
+
+    it "uses Marshal" do
+      ASS::Marshal.expects(:dump).returns("whatever")
+      ASS::Marshal.expects(:load).returns({})
+      test_format(ASS::Marshal)
+    end
+
+    it "uses JSON" do
+      ASS::JSON.expects(:dump).returns("whatever")
+      ASS::JSON.expects(:load).returns({})
+      test_format(ASS::JSON)
+    end
+  end
     
   describe "server" do
     before do
@@ -168,6 +209,7 @@ describe "ASS" do
       10.times.map { input.pop }.uniq.should == [0]
       10.times.map { output.pop }.uniq.should == [1]
     end
+    
 
     it "should handle error with on_error" do
       errors = Queue.new
