@@ -3,12 +3,15 @@ require 'mq'
 
 module ASS; end
 require 'ass/amqp' # monkey patch stolen from nanite.
+require 'ass/serializers'
+
 require 'ass/server' # monkey patch stolen from nanite.
 require 'ass/callback_factory'
 require 'ass/actor'
 require 'ass/rpc'
 require 'ass/client'
-require 'ass/serializers'
+
+require 'ass/topic'
 
 module ASS
 

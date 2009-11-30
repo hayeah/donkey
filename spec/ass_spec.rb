@@ -31,7 +31,20 @@ describe "ASS" do
     ASS.cast("spec",nil,data,opts,meta)
   end
 
+  def start_ass
+    q = Queue.new
+    @thread = Thread.new {ASS.start(:logging => (ENV["trace"]=="true")) {
+        q << :ready
+      }}
+    @thread.abort_on_exception = true
+    q.pop.should == :ready
+  end
 
+  def stop_ass
+    ASS.stop
+    @thread.join
+  end
+  
   it "should start and stop" do
     30.times do
       begin
@@ -344,6 +357,67 @@ describe "ASS" do
         q2 << data
       end
       (1..10).map { q2.pop }.should == (1..10).to_a
+    end
+    
+  end
+
+  describe "funnel and tunnel" do
+    before do
+      start_ass
+    end
+
+    after do
+      stop_ass
+    end
+
+    def funnel(i,match)
+      q = Queue.new
+      ASS::Topic.funnel("spec-tunnel","spec-funnel-#{i}",match) {
+        define_method(:on_event) do |key,data|
+          q << [key,data]
+        end
+      }
+      q
+    end
+
+    def tunnel
+      ASS::Topic.tunnel("spec-tunnel")
+    end
+
+    def event(key,data)
+      ASS::Topic.event("spec-tunnel",key,data)
+    end
+
+    it "event notification from tunnel to funnel" do
+      tunnel
+      
+      all = funnel(0,"*")
+      evens = funnel(1,"even")
+      odds = funnel(2,"odd")
+
+      sleep(0.1) # yield
+
+      10.times { |i|
+        key = i.even? ? "even" : "odd"
+        event(key,i)
+      }
+      
+      all = 10.times.map { all.pop }
+      all.each do |(key,data)|
+        key.match(/^even|odd$/).should_not be_nil
+      end
+
+      evens = 5.times.map { evens.pop }
+      evens.each do |(key,data)|
+        key.should == "even"
+        data.should be_even
+      end
+
+      odds = 5.times.map { odds.pop }
+      odds.each do |(key,data)|
+        key.should == "odd"
+        data.should be_odd
+      end
     end
     
   end
