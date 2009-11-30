@@ -247,6 +247,7 @@ describe "ASS" do
     end
 
     it "should resend message" do
+      pending
       i = 0
       q = Queue.new
       s = server do |data|
@@ -284,6 +285,7 @@ describe "ASS" do
     end
 
     it "unsubscribes from queue" do
+      pending
       q1 = Queue.new
       s1 = server do |data|
         q1 << data
