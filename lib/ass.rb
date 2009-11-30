@@ -12,6 +12,7 @@ require 'ass/client'
 module ASS
 
   class << self
+
     def server(name,opts={},&block)
       s = ASS::Server.new(name,opts)
       if block
@@ -69,12 +70,16 @@ module ASS
       }
       payload.merge(:version => opts[:version]) if opts.has_key?(:version)
       payload.merge(:meta => opts[:meta]) if opts.has_key?(:meta)
-      # this would create a dummy MQ exchange
-      # object for the sole purpose of publishing
-      # the message. Will not clobber existing
-      # server already started in the process.
-      @mq.direct(name,:no_declare => true).publish(::Marshal.dump(payload),opts)
+      dummy_exchange(name).publish(::Marshal.dump(payload),opts)
       true
+    end
+
+    # this would create a dummy MQ exchange object
+    # for the sole purpose of publishing the
+    # message. Will not clobber existing server
+    # already started in the process.
+    def dummy_exchange(name)
+      @mq.direct(name,:no_declare => true)
     end
     
   end
