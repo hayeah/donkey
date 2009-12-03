@@ -20,6 +20,16 @@ module ASS
     end
   end
 
+  module BERT
+    require 'bert'
+    def self.load(raw)
+      ::BERT.decode(raw)
+    end
+
+    def self.dump(raw)
+      ::BERT.encode(raw)
+    end
+  end
   # mongodb BSON
   module BSON
   end

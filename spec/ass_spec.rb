@@ -189,6 +189,18 @@ describe "ASS" do
       ASS::JSON.expects(:load).returns({})
       test_format(ASS::JSON)
     end
+
+    it "uses BERT" do
+      ASS::BERT.expects(:dump).returns("whatever")
+      ASS::BERT.expects(:load).returns({})
+      test_format(ASS::BERT)
+    end
+
+    it "uses JSON" do
+      ASS::JSON.expects(:dump).returns("whatever")
+      ASS::JSON.expects(:load).returns({})
+      test_format(ASS::JSON)
+    end
   end
     
   describe "server" do
