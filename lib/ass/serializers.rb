@@ -2,7 +2,7 @@ module ASS
   module JSON
     require 'json'
     def self.load(raw)
-      JSON.parse(raw)
+      ::JSON.parse(raw)
     end
 
     def self.dump(obj)

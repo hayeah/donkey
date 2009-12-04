@@ -73,7 +73,7 @@ class ASS::RPC
                          :auto_delete => true)
     queue.bind("__rpc__",:routing_key => @rpc_id)
     queue.subscribe { |header,payload|
-      payload = ::Marshal.load(payload)
+      payload = ASS.serializer.load(payload)
       buffer << [header,payload]
     }
   end
