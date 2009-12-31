@@ -9,9 +9,9 @@ class ASS::Topic
                                        opts.merge(:routing_key => key))
     end
 
-    def funnel(tunnel_name,funnel_name,key_matcher,&block)
+    def funnel(tunnel_name,funnel_name,key_matcher,opts={},&block)
       # actor should respond to on_event(key,data)
-      funnel = Funnel.new(tunnel_name,funnel_name,key_matcher)
+      funnel = Funnel.new(tunnel_name,funnel_name,key_matcher,opts)
       if block
         funnel.react(&block)
       end
@@ -20,10 +20,12 @@ class ASS::Topic
   end
 
   class Funnel
-    def initialize(tunnel_name,funnel_name,key_matcher)
+    def initialize(tunnel_name,funnel_name,key_matcher,opts={})
       @funnel_name = funnel_name
       @exchange = ASS.dummy_exchange(tunnel_name)
       @matcher = key_matcher
+      self.queue(opts) if opts
+      self
     end
     
     def queue(opts={})
@@ -32,13 +34,14 @@ class ASS::Topic
         @queue.bind(@exchange.name,
                     opts.merge({ :key => @matcher }))
       end
-      @queue
+      self
     end
 
     def react(callback=nil,opts={},&block)
       callback = build_callback(callback || block)
       me = self
-      self.queue.subscribe(opts) do |info,payload|
+      self.queue
+      @queue.subscribe(opts) do |info,payload|
         data = ASS.serializer.load(payload)
         handler = callback.new
         work = lambda {
@@ -73,7 +76,7 @@ class ASS::Topic
           else
             raise "can build topic callback from one of Proc, Class, Module"
           end
-      raise "must react to on_event" unless c.public_method_defined?(:on_event)
+      raise "callback must react to on_event" unless c.public_method_defined?(:on_event)
       c
     end
   end
