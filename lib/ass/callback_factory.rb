@@ -1,95 +1,141 @@
-class ASS::CallbackFactory
-
-  module ServiceMethods
-    def resend
-      throw(:__ass_resend)
+class ASS::Callback
+  class Exit < RuntimeError
+    attr_reader :from,:reason,:data
+    def initialize(from,reason,data)
+      @from = from
+      @reason = reason
+      @data = data
     end
+  end
+
+  class Discard < RuntimeError
     
-    def discard
-      throw(:__ass_discard)
-    end
-    
-    def header
-      @__header__
-    end
-
-    def payload
-      @__payload__
-    end
-
-    def method
-      @__method__
-    end
-
-    def data
-      @__data__
-    end
-
-    def meta
-      @__meta__
-    end
-
-    def version
-      @__version__
-    end
-
-    def call(name,method,data=nil,opts={},meta=nil)
-      @__service__.call(name,method,data,opts,meta)
-    end
-
-    def cast(name,method,data=nil,opts={},meta=nil)
-      @__service__.cast(name,method,data,opts,meta)
-    end
   end
   
-  def initialize(callback)
-    @factory = build_factory(callback)
+  class << self
+    def factory(callback=nil,&block)
+      callback ||= block
+      case callback
+      when Proc
+        Class.new(self,&callback) 
+      when Class
+        raise "not a subclass of #{self}" unless callback.ancestors.include?(self)
+        # maybe allow duck compatibility?
+        callback
+      when Module
+        Class.new(self) { include callback }
+      else
+        raise "can build factory from one of Proc, Class, Module"
+      end
+    end
+
+    def process!(*args)
+      self.new(*args).process!
+    end
   end
 
-  def callback_for(server,header,payload)
-    # method,data
-    if @factory.is_a? Class
-      if @factory.respond_to? :version
-        klass = @factory.get_version(payload["version"])
-      else
-        klass = @factory
-      end
-      obj = klass.new
-    else
-      obj = @factory
+  attr_reader :server, :header, :content
+  def initialize(server,header,content)
+    @server = server
+    @header = header
+    @content = content
+  end
+
+  def process!
+    type = content["type"]
+    unless type =~ %r'^(call|back|cast|exit|ping|link|pong)$'
+      raise "bad message type: #{type} "
     end
-    obj.instance_variable_set("@__service__",server)
-    obj.instance_variable_set("@__header__",header)
-    obj.instance_variable_set("@__payload__",payload)
-    obj.instance_variable_set("@__method__",payload["method"])
-    obj.instance_variable_set("@__data__",payload["data"])
-    obj.instance_variable_set("@__meta__",payload["meta"])
-    obj.instance_variable_set("@__version__",payload["version"])
-    obj
+    dispatch = type.to_sym
+    
+    case dispatch
+    when :call
+      result = try {
+        self.on_call(content["data"])
+      } 
+      ASS.back(respond_to=content["from"],
+               from=server.name,
+               content["method"],
+               result,
+               content["tag"],
+               content["meta"])
+    when :back
+      try {
+        self.on_back(content["data"])
+      }
+    when :cast
+      try {
+        self.on_cast(content["data"])
+      }
+    when :exit
+      try {
+        raise(Exit.new(content["from"],content["reason"],content["data"]))
+      }
+    end
+    true
+  end
+
+  def on_call(data)
+    raise "abstract"
+  end
+
+  def on_cast(data)
+    raise "abstract"
+  end
+
+  def on_back(data)
+    raise "abstract"
+  end
+
+  def on_error(e)
+    # re-raise by default
+    raise e
+  end
+  
+  def discard!
+    raise Discard
+  end
+
+  def ack!
+    if @acked.nil? && server.ack?
+      header.ack
+      @acked = true
+    end
+  end
+
+  def acked?
+    @acked == true
+  end
+
+  # def resend
+#     throw(:__ass_resend)
+#   end
+  
+
+  def call(*args)
+    @server.call(*args)
+  end
+
+  def cast(*args)
+    @server.cast(*args)
   end
 
   private
 
-  def build_factory(callback)
-    c = case callback
-        when Proc
-          Class.new &callback
-        when Class
-          callback
-        when Module
-          Class.new { include callback }
-        else
-          raise "can build factory from one of Proc, Class, Module"
-        end
-    case c
-    when Class
-      c.instance_eval { include ServiceMethods }
-    else
-      c.extend ServiceMethods
+  def try
+    begin
+      return(yield)
+    rescue Discard
+      # do nothing
+    rescue => e
+      begin
+        self.on_error(e)
+      rescue Discard
+        # do nothing
+      end
+    ensure
+      ack!
     end
-    c
   end
-  
-
   
 end

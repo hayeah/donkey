@@ -67,25 +67,51 @@ module ASS
       ASS::Client.new(opts)
     end
 
-    # maybe move cast and call into ASS::Server's class methods
-    def cast(name,method,data,opts,meta)
-      call(name,method,data,opts.merge(:reply_to => nil),meta)
+    def cast(name,method,data,meta=nil,opts={})
+      payload = {
+        "type" => "cast",
+        "method" => method,
+        "data" => data,
+        "meta" => meta
+      }
+      publish(name,payload,opts)
+      true
     end
     
-    def call(name,method,data,opts,meta)
+    def call(name,from,method,data,meta=nil,opts={})
       # make sure the payload hash use string
       # keys. Serialization format might not
       # preserve type.
+      message_id = rand(999_999_999).to_s
       payload = {
-        #:type => type,
+        "type" => "call",
+        "from" => from,
         "method" => method,
         "data" => data,
-        "meta" => meta,
+        "tag" => message_id,
+        "meta" => meta
       }
-      payload.merge("version" => opts[:version]) if opts.has_key?(:version)
-      payload.merge("meta" => opts[:meta]) if opts.has_key?(:meta)
-      dummy_exchange(name).publish(ASS.serializer.dump(payload),opts)
+      publish(name,payload,opts)
+      return message_id
+    end
+
+    def back(name,from,method,data,tag,meta=nil,opts={})
+      payload = {
+        "type" => "back",
+        "from" => from,
+        "method" => method,
+        "data" => data,
+        "tag" => tag,
+        "meta" => meta
+      }
+      publish(name,payload,opts)
       true
+    end
+
+    private
+
+    def publish(name,payload,opts={})
+      dummy_exchange(name).publish(ASS.serializer.dump(payload),opts)
     end
 
     # this would create a dummy MQ exchange object

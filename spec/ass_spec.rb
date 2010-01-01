@@ -16,28 +16,37 @@ describe "ASS" do
   def server(*args,&block)
     name = args.grep(String).first || "spec"
     opts = args.grep(Hash).first || {}
-    ASS.server(name,opts) {
-      define_method(:on_call,&block)
-    }
+    ASS.server(name,opts) do
+      define_method(:on_cast,&block)
+    end
   end
 
-  def call(data,opts={},meta=nil)
-    ASS.call("spec",nil,data,{
-               :reply_to => "spec"
-             }.merge(opts),meta)
+  def call(data,meta=nil,opts={})
+    ASS.call("spec","spec",method=:test,data,meta,opts)
   end
 
-  def cast(data,opts={},meta=nil)
-    ASS.cast("spec",nil,data,opts,meta)
+  def cast(data,meta=nil,opts={})
+    ASS.cast("spec",method=:test,data,meta,opts)
+  end
+
+  def start_ass
+    t = Thread.current
+    @thread = Thread.new {
+      ASS.start(:logging => (ENV["trace"]=="true")) {
+        t.wakeup
+      }}
+    @thread.abort_on_exception = true
+    Thread.stop
   end
 
   def start_ass
     q = Queue.new
-    @thread = Thread.new {ASS.start(:logging => (ENV["trace"]=="true")) {
-        q << :ready
+    @thread = Thread.new {
+      ASS.start(:logging => (ENV["trace"]=="true")) {
+        q << :ok
       }}
     @thread.abort_on_exception = true
-    q.pop.should == :ready
+    q.pop
   end
 
   def stop_ass
@@ -73,6 +82,7 @@ describe "ASS" do
   end
 
   it "should stop ASS if server does not respond to on_error" do
+    pending
     begin
       old_stderr = $stderr
       error_output = StringIO.new
@@ -107,6 +117,8 @@ describe "ASS" do
 
   
   it "should resend a message if server did not ack a message" do
+    # test this when on_exit is implemented
+    pending
     begin
       old_stderr = $stderr
       error_output = StringIO.new
@@ -116,7 +128,7 @@ describe "ASS" do
       t1 = Thread.new {
         ASS.start {
           s = ASS.server("spec").react(:ack => true) do
-            define_method(:on_call) do |i|
+            define_method(:on_cast) do |i|
               raise "ouch" if i == :die
               q << [header,i]
               i
@@ -131,7 +143,7 @@ describe "ASS" do
       header, msg = q.pop
       msg.should == 1
       header.redelivered != true
-      cast(:die)
+      cast(:die) rescue :ok
       q.pop.should == :died
       t1.join
       $stderr.string.should_not be_empty
@@ -159,9 +171,10 @@ describe "ASS" do
   describe "serialization formats" do
     def test_format(format)
       q = Queue.new
-      @thread = Thread.new {ASS.start(:format => format
-                                      #:logging => true
-                                      ) {
+      @thread = Thread.new {
+        ASS.start(:format => format
+                  #:logging => true
+                  ) {
           q << :ready
         }}
       @thread.abort_on_exception = true
@@ -180,176 +193,269 @@ describe "ASS" do
 
     it "uses Marshal" do
       ASS::Marshal.expects(:dump).returns("whatever")
-      ASS::Marshal.expects(:load).returns({})
+      ASS::Marshal.expects(:load).returns({"type" => "cast"})
       test_format(ASS::Marshal)
     end
 
     it "uses JSON" do
       ASS::JSON.expects(:dump).returns("whatever")
-      ASS::JSON.expects(:load).returns({})
+      ASS::JSON.expects(:load).returns({"type" => "cast"})
       test_format(ASS::JSON)
     end
 
     it "uses BERT" do
       ASS::BERT.expects(:dump).returns("whatever")
-      ASS::BERT.expects(:load).returns({})
+      ASS::BERT.expects(:load).returns({"type" => "cast"})
       test_format(ASS::BERT)
     end
 
     it "uses JSON" do
       ASS::JSON.expects(:dump).returns("whatever")
-      ASS::JSON.expects(:load).returns({})
+      ASS::JSON.expects(:load).returns({"type" => "cast"})
       test_format(ASS::JSON)
     end
   end
+
+  describe "callback" do
+    def server
+      s = mock("server",:ack? => true)
+      s.stubs(:name => "mock-server")
+      s
+    end
+
+    def header
+      mock("header",:ack => true)
+    end
     
+    context "factory building" do
+      it "creates subclass from Proc" do
+        f = ASS::Callback.factory {
+          def on_cast
+            :foobar
+          end
+        }
+        f.new(nil,nil,nil).on_cast.should == :foobar
+      end
+      
+      it "uses a given class as is" do
+        c = Class.new(ASS::Callback) do
+          def on_cast
+            :foobar
+          end
+        end
+        f = ASS::Callback.factory(c)
+        f.new(nil,nil,nil).on_cast.should == :foobar
+      end
+
+      it "raises if class is not a subclass of Callback" do
+        c = Class.new
+        lambda {
+          ASS::Callback.factory(c)
+        }.should raise_error
+      end
+      
+      it "subclasses then includes a module" do
+        m = Module.new do
+          def on_cast
+            :foobar
+          end
+        end
+        f = ASS::Callback.factory(m)
+        f.new(nil,nil,nil).on_cast.should == :foobar
+      end
+
+      # it "delegates to a singleton" do
+      #         pending
+      #       end
+      
+    end
+
+    it "processes with attributes set" do
+      f = ASS::Callback.factory{}.new(:server,:header,:content)
+      f.server.should == :server
+      f.header.should == :header
+      f.content.should == :content
+    end
+
+    def handler(content={"type" => "cast","data" => 0})
+      f = ASS::Callback.factory {
+        def on_cast(data)
+        end
+      }
+      f.new(server,header,content)
+    end
+
+    it "invokes on_cast" do
+      o = handler
+      o.expects(:on_cast).with(0)
+      o.process!
+    end
+
+    it "acks if necessary" do
+      o = handler
+      o.process!
+      o.acked?.should == true
+    end
+    
+    it "invokes on_error when error is raised" do
+      f = ASS::Callback.factory {
+        def on_cast(data)
+          raise "foobar"
+        end
+      }
+      o = f.new(server,header,{"type" => "cast"})
+      o.expects(:on_error)
+      o.process!
+      o.acked?.should == true
+    end
+
+    it "reraises error raised in on_error" do
+      f = ASS::Callback.factory {
+        def on_cast(data)
+          raise "foobar"
+        end
+
+        def on_error(e)
+          raise "aiyeee"
+        end
+      }
+      o = f.new(server,header,{"type" => "cast"})
+      lambda { o.process! }.should raise_error
+    end
+
+    it "invokes on_call" do
+      s = server
+      f = ASS::Callback.factory {}
+      o = f.new(s,header,{
+                  "type" => "call",
+                  "from" => "from-test",
+                  "method" => "test-method",
+                  "data" => 0,
+                  "meta" => "meta",
+                  "tag" => "tag"
+                })
+      test_result = 10
+      o.expects(:on_call).with(0).returns(test_result)
+      ASS.expects(:back).with("from-test",s.name,"test-method",test_result,"tag","meta")
+      o.process!
+      o.acked?.should == true
+    end
+    
+  end
+  
   describe "server" do
+    def server(&block)
+      ASS.server("spec",&block)
+    end
+    
     before do
-      q = Queue.new
-      @server = nil
-      @thread = Thread.new {ASS.start {
-          q << :ready
-        }}
-      @thread.abort_on_exception = true
-      q.pop.should == :ready
+      start_ass
     end
 
     after do
-      ASS.stop
-      @thread.join
+      stop_ass
     end
+    
 
-    it "should process message with on_call" do
+    it "processes message" do
       input = Queue.new
       output = Queue.new
-      s = server("spec") do |i|
-        input << i if i == 0
-        output << i if i == 1 # this is the response to self
-        i + 1
-      end
-      # note that when calling self we have the
-      # wierdness of the response sending back to
-      # self.
+      server {
+        define_method(:on_call) do |n|
+          input << n
+          n + 1
+        end
+
+        define_method(:on_back) do |n|
+          output << n
+        end
+        
+      }
       10.times { call(0) }
       10.times.map { input.pop }.uniq.should == [0]
       10.times.map { output.pop }.uniq.should == [1]
     end
     
 
-    it "should handle error with on_error" do
-      errors = Queue.new
-      msgs = Queue.new
+    it "should be killed by uncaught error" do
+      t = Thread.current
       s = ASS.server("spec") {
-        def on_call(i)
+        define_method(:on_cast) do |_|
+          t.wakeup
           raise "aieee"
         end
-
-        define_method(:on_error) do |e,msg|
-          msgs << msg
-          errors << e
-        end
       }
-      10.times { call(0) }
-      10.times {
-        msgs.pop.should == 0
-        #errors.pop.is_a?(Exception).should == true
-        errors.pop.should be_a(RuntimeError)
-      }
+      begin
+        # swallow output
+        old_stderr = $stderr
+        $stderr = StringIO.new("")
+        lambda {
+          cast(0)
+          Thread.stop
+        }.should raise_error
+      ensure
+        $stderr = old_stderr
+      end
     end
 
-    it "should have access to magic service methods" do
-      q = Queue.new
-      s = server { |i|
-        q << [header,method,data,meta]
-      }
-      cast(1,{},:meta)
-      header,method,data,meta = q.pop
-      header.should be_an(MQ::Header)
-      method.should be_nil
-      data.should == 1
-      meta.should == :meta
-    end
-
-
-    it "should use a new callback instance to process each request" do
-      q = Queue.new
-      s = server { |i|
-        q << self
-        i
-      }
-      2000.times {|i|
-        begin
-          cast(1)
-        rescue => e
-          p "broken at #{i}"
-          raise e
-        end
-      }
-      # we need to hold on to the saved pointers,
-      # otherwise objects would get garbage
-      # collected and their object_ids
-      # reused. This is the case with C-ruby.
-      saved_pointers = []
-      ids = (0...2000).map {
-        o = q.pop
-        saved_pointers << o
-        o.object_id
-      }
-      #pp s.objs
-      ids.uniq.length.should == ids.length
-    end
-    
-    it "should receive messages in order from a connection" do
+    it "gets header and content from AMQP" do
       q = Queue.new
       s = server do |i|
-        q << i
-        i
-      end
-      100.times { |i|
-        cast(i)
-      }
-      100.times { |i|
-        q.pop == i
-      }
-    end
-
-    it "should resend message" do
-      pending
-      i = 0
-      q = Queue.new
-      s = server do |data|
-        q << [header,method,data,meta]
-        # requeue the first 100 messages
-        i += 1
-        if i <= 100
-          resend
+        define_method(:on_cast) do |data|
+          t = Thread.current
+          t[:header]  = header
+          t[:content] = content
+          t[:data]    = data
+          q << :ok
         end
-        true
       end
-      100.times { |i|
-        cast(i,{ :message_id => i }, i)
-      }
-      # the first 100 should be the same message as the messages to 200
-      
-      msgs100 = 100.times.map { q.pop }
-      msgs200 = 100.times.map { q.pop }
-      msgs100.zip(msgs200) { |m1,m2|
-        header1,method1,data1,meta1 = m1
-        header2,method2,data2,meta2 = m2
-
-        # everything should be the same except the delivery_tag
-        header2.delivery_tag.should_not == header1.delivery_tag
-        # requeue is different from AMQP's redelivery
-        ## it should resend the message as another one.
-        header1.redelivered.should_not == true
-        header2.redelivered.should_not == true
-        
-        header2.message_id.should == header2.message_id
-        method2.should == method1
-        data2.should == data1
-        meta1.should == meta2
-      }
+      cast(1)
+      q.pop.should == :ok
+      t = s.thread
+      t[:header].should be_an(MQ::Header)
+      t[:content].should be_a(Hash)
+      t[:content].should include(*%w(type method data))
+      t[:data].should == 1
     end
+
+
+    # it "should resend message" do
+#       pending
+#       i = 0
+#       q = Queue.new
+#       s = server do |data|
+#         q << [header,method,data,meta]
+#         # requeue the first 100 messages
+#         i += 1
+#         if i <= 100
+#           resend
+#         end
+#         true
+#       end
+#       100.times { |i|
+#         cast(i,{ :message_id => i }, i)
+#       }
+#       # the first 100 should be the same message as the messages to 200
+      
+#       msgs100 = 100.times.map { q.pop }
+#       msgs200 = 100.times.map { q.pop }
+#       msgs100.zip(msgs200) { |m1,m2|
+#         header1,method1,data1,meta1 = m1
+#         header2,method2,data2,meta2 = m2
+
+#         # everything should be the same except the delivery_tag
+#         header2.delivery_tag.should_not == header1.delivery_tag
+#         # requeue is different from AMQP's redelivery
+#         ## it should resend the message as another one.
+#         header1.redelivered.should_not == true
+#         header2.redelivered.should_not == true
+        
+#         header2.message_id.should == header2.message_id
+#         method2.should == method1
+#         data2.should == data1
+#         meta1.should == meta2
+#       }
+#     end
 
     it "unsubscribes from queue" do
       pending
@@ -369,67 +475,6 @@ describe "ASS" do
         q2 << data
       end
       (1..10).map { q2.pop }.should == (1..10).to_a
-    end
-    
-  end
-
-  describe "funnel and tunnel" do
-    before do
-      start_ass
-    end
-
-    after do
-      stop_ass
-    end
-
-    def funnel(i,match)
-      q = Queue.new
-      ASS::Topic.funnel("spec-tunnel","spec-funnel-#{i}",match) {
-        define_method(:on_event) do |key,data|
-          q << [key,data]
-        end
-      }
-      q
-    end
-
-    def tunnel
-      ASS::Topic.tunnel("spec-tunnel")
-    end
-
-    def event(key,data)
-      ASS::Topic.event("spec-tunnel",key,data)
-    end
-
-    it "event notification from tunnel to funnel" do
-      tunnel
-      
-      all = funnel(0,"*")
-      evens = funnel(1,"even")
-      odds = funnel(2,"odd")
-
-      sleep(0.1) # yield
-
-      10.times { |i|
-        key = i.even? ? "even" : "odd"
-        event(key,i)
-      }
-      
-      all = 10.times.map { all.pop }
-      all.each do |(key,data)|
-        key.match(/^even|odd$/).should_not be_nil
-      end
-
-      evens = 5.times.map { evens.pop }
-      evens.each do |(key,data)|
-        key.should == "even"
-        data.should be_even
-      end
-
-      odds = 5.times.map { odds.pop }
-      odds.each do |(key,data)|
-        key.should == "odd"
-        data.should be_odd
-      end
     end
     
   end
