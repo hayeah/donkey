@@ -1,4 +1,24 @@
-class ASS::Callback
+require 'thread'
+class ASS::Dispatcher
+  def initialize(server,processor)
+    @events = Queue.new
+    # processor gets priviledged access to @events
+    @processor = Processor.create(callback,@events)
+    @thread = Thread.new do
+      header, content = @events.pop
+      @processor.process(server,header,content)
+    end
+  end
+
+  def enqueue(header,content)
+    @events << [header,content]
+  end
+end
+
+class ASS::Dispatcher::Processor
+end
+
+class ASS::Dispatcher::Callback
   class Exit < RuntimeError
     attr_reader :from,:reason,:data
     def initialize(from,reason,data)
@@ -11,17 +31,22 @@ class ASS::Callback
   class Discard < RuntimeError
     
   end
+
+  def select
+    @events
+  end
   
   class << self
-    def factory(callback=nil,&block)
+    def create(callback=nil,&block)
       callback ||= block
       case callback
       when Proc
         Class.new(self,&callback) 
       when Class
-        raise "not a subclass of #{self}" unless callback.ancestors.include?(self)
         # maybe allow duck compatibility?
-        callback
+        raise "not a subclass of #{self}" unless callback.ancestors.include?(self)
+        # always subclass to get fresh class attributes
+        Class.new(callback)
       when Module
         Class.new(self) { include callback }
       else
@@ -29,8 +54,8 @@ class ASS::Callback
       end
     end
 
-    def process!(*args)
-      self.new(*args).process!
+    def process(*args)
+      self.new(*args).process
     end
   end
 

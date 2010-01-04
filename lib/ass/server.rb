@@ -49,7 +49,7 @@ class ASS::Server
     opts = {} if opts.nil?
     
     # second call would just swap out the callback.
-    @factory = ASS::Callback.factory(callback)
+    @mailbox = ASS::Mailbox.create(callback)
     
     return(self) if @subscribed
     @subscribed = true
@@ -67,11 +67,17 @@ class ASS::Server
     # TODO implement on_exit semantic
     @thread.abort_on_exception = true
 
-    # subscription to all the queues
+    # subscription to queues
     @shared_q.subscribe(opts) do |header,content|
-      @events << [header, ASS.serializer.load(content)]
+      @mailbox.queue(header,content)
+      
+      # @events << [header, ASS.serializer.load(content)]
     end
-    
+
+    @private_q.subscribe(opts) do |header,content|
+      
+    end
+
     self
   end
 
