@@ -15,6 +15,18 @@ require 'ass/topic'
 
 module ASS
 
+  # stolen from nanite
+  def self.random_id
+    values = [rand(0x0010000),
+              rand(0x0010000),
+              rand(0x0010000),
+              rand(0x0010000),
+              rand(0x0010000),
+              rand(0x1000000),
+              rand(0x1000000)]
+    "%04x%04x%04x%04x%04x%06x%06x" % values
+  end
+  
   class << self
 
     #MQ = nil
@@ -107,6 +119,7 @@ module ASS
       publish(name,payload,opts)
       true
     end
+    
 
     private
 

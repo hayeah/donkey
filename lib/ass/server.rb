@@ -1,25 +1,39 @@
 require 'thread'
 class ASS::Server
-  attr_reader :name
+  # name and key should uniquely identify a server instance
+  attr_reader :name, :key
+
   attr_reader :thread
   
   def initialize(name,opts={})
-    @name = name
-    # the server is a fanout (ignores routing key)
-    @exchange = ASS.mq.fanout(name,opts)
+    @name = name.to_s
+    @key = opts[:key] || ASS.random_id
+    
+    # create two exchanges using the same options
+    @direct_e = ASS.mq.direct(name,opts)
+    @cast_e   = ASS.mq.fanout("#{name}.cast",opts)
   end
 
-  def exchange
-    @exchange
-  end
+  def declare_queue(opts={})
+    unless @queue_declared
+      @queue_declared = true
+      # shared queue
+      @shared_q = ASS.mq.queue(name,opts)
+      @shared_q.bind(@direct_e,:key => nil)
 
-  def queue(opts={})
-    unless @queue
-      @queue ||= ASS.mq.queue(self.name,opts)
-      @queue.bind(self.exchange)
+      # private queue
+      @private_q = ASS.mq.queue("#{name}.self",opts)
+      @private_q.bind(@direct_e,:key => self.key)
+
+#       # cast queue
+#       @cast_q = ASS.mq.queue("#{name}.cast",opts)
+#       @cast_q.bind(self.exchange,:key => nil)
+      
     end
     self
   end
+
+  alias :queue :declare_queue
 
   # where the actor should ack each message it processes
   def ack?
@@ -40,7 +54,8 @@ class ASS::Server
     return(self) if @subscribed
     @subscribed = true
     @ack = opts[:ack]
-    self.queue unless @queue
+
+    self.declare_queue
 
     @events = Queue.new
     @thread = Thread.new do
@@ -52,7 +67,8 @@ class ASS::Server
     # TODO implement on_exit semantic
     @thread.abort_on_exception = true
 
-    @queue.subscribe(opts) do |header,content|
+    # subscription to all the queues
+    @shared_q.subscribe(opts) do |header,content|
       @events << [header, ASS.serializer.load(content)]
     end
     
@@ -61,6 +77,7 @@ class ASS::Server
 
   # unsuscribe from the queue
   def stop(&block) # allows callback
+    raise "broken"
     if block
       @queue.unsubscribe(&block)
     else
