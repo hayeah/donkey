@@ -2,79 +2,86 @@ require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 describe "Donkey" do
   before(:each) do
-    AMQP.stubs(:connect)
-    MQ.stubs(:new)
-    @channel = stub("Channel",:direct => true).responds_like(Donkey::Channel.new)
-    Donkey::Channel.stubs(:open => @channel)
-    
+    stub(AMQP).connect.with_any_args
+    stub(MQ).new.with_any_args
+    @channel = Donkey::Channel.open
+    stub(Donkey::Channel).open { @channel }
+
     @name = "testing server"
-    @dk = Donkey.new(@name)
+    @donkey = Donkey.new(@name)
     @reactor = Donkey::Reactor.new(@name)
   end
 
+  it "has name" do
+    @donkey.name.should == @name
+  end
+  
+  # it "declares exchange" do
+#     mock(@channel).direct(@donkey.name)
+#     @donkey.exchange
+#     @donkey.
+#   end
+
+#   it "sets exchange once only" do
+#     mock(@channel).direct(@donkey.name).once
+#     @donkey.exchange
+#     @donkey.exchange
+#   end
+  
   context "react" do
-    it "declares exchange" do
-      @dk.channel.expects(:direct).with(@dk.name)
-      @dk.react @reactor
-    end
+    
   end
   
   context "ping" do
     it "has no instance reacting" do
-      @dk.ping.should == []
+      @donkey.ping.should == []
+    end
+
+    it "sends ping into rabbitmq" do
+      mock(@channel).publish(is_a(Donkey::Ping)).once
+      @donkey.ping
     end
 
     it "has one instance reacting" do
-      @reactor.expects(:on_ping).once
-      @dk.react @reactor
-      @dk.ping.should have(1).pongs
+      mock(@reactor).on_ping.once
+      @donkey.react @reactor
+      @donkey.ping.should have(1).pongs
     end
 
     it "has two instances reacting" do
-      @reactor.expects(:on_ping).twice
-      @dk.react @reactor
-      @dk.react @reactor
-      @dk.ping.should have(2).pongs
+      mock(@reactor).on_ping.twice
+      @donkey.react @reactor
+      @donkey.react @reactor
+      @donkey.ping.should have(2).pongs
     end
   end
 end
 
 describe "Donkey::Channel" do
   before(:each) do
-    # @connection = mock("Connection")
-#     @channel = mock("MQ")
-#     @channel.stubs(:connection => @connection)
-    
-    # AMQP.stubs(:connect)
-#     MQ.stubs(:new)
+    @_amqp = mock(AMQP).connect(is_a(Hash))
+    @_mq = mock(MQ).new.with_any_args
   end
 
   it "creates a new AMQP channel" do
-    AMQP.expects(:connect)
-    MQ.expects(:new)
-    #"abc".expects :foo
     Donkey::Channel.open
   end
 
   it "uses default settings to initialize AMQP" do
-    AMQP.expects(:connect).with(Donkey::Channel.default_settings)
-    MQ.expects(:new)
-    #"abc".expects :foo
+    @_amqp.with(Donkey::Channel.default_settings)
     Donkey::Channel.open
   end
 
   it "overrides default settings to initialize AMQP" do
-    MQ.expects(:new)
-    AMQP.expects(:connect).with(Donkey::Channel.default_settings.merge({ :overrided_setting => "overrided_value"}))
-    #"abc".expects :foo
+    @_amqp.with(Donkey::Channel.default_settings.merge({ :overrided_setting => "overrided_value"}))
     Donkey::Channel.open({:overrided_setting => "overrided_value"})
   end
 end
 
 describe "Donkey::Reactor" do
   before(:each) do
-    AMQP.stubs(:connect)
-    MQ.stubs(:new)
+    stub(AMQP).connect
+    stub(MQ).new
     @name = "testing reactor"
     @donkey = Donkey.new(@name)
     @reactor = Donkey::Reactor.new(@donkey)
@@ -89,7 +96,8 @@ describe "Donkey::Reactor" do
   end
 
   it "has uuid" do
-    Donkey::UUID.expects(:generate).twice.returns("uuid 1","uuid 2")
+    guids = ["uuid 1","uuid 2"]
+    mock(Donkey::UUID).generate.twice { guids.shift }
     Donkey::Reactor.new(@donkey).uuid.should == "uuid 1"
     Donkey::Reactor.new(@donkey).uuid.should == "uuid 2"
   end

@@ -16,21 +16,27 @@ class Donkey
   end
 
   def ping
+    @channel.publish(Donkey::Ping.new(self))
     @reactors.map(&:on_ping)
   end
 
+  # def exchange(opts={})
+#     @exchange ||= self.channel.direct(self.name)
+#     @exchange
+#   end
+
   def react(reactor)
-    self.channel.direct(self.name)
     @reactors << reactor
   end
 end
+
 
 require 'forwardable'
 class Donkey::Channel
   extend Forwardable
 
   def_delegators :@mq, :direct, :fanout, :exchange
-
+  
   def self.open(settings={})
     self.new(default_settings.merge(settings))
   end
@@ -43,6 +49,16 @@ class Donkey::Channel
   def initialize(settings={})
     @settings = self.class.default_settings.merge(settings)
     @mq = MQ.new(AMQP.connect(@settings))
+  end
+
+  def publish(message,opts={})
+    
+  end
+end
+
+class Donkey::Ping
+  def initialize(donkey)
+    
   end
 end
 
