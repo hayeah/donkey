@@ -2,22 +2,24 @@ require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 describe "Donkey" do
   before(:each) do
+    AMQP.stubs(:connect)
+    MQ.stubs(:new)
+    @channel = stub("Channel",:direct => true).responds_like(Donkey::Channel.new)
+    Donkey::Channel.stubs(:open => @channel)
+    
     @name = "testing server"
     @dk = Donkey.new(@name)
+    @reactor = Donkey::Reactor.new(@name)
   end
 
-  it "has rabbit" do
-    @dk.rabbit.should be_a(Donkey::Rabbit)
+  context "react" do
+    it "declares exchange" do
+      @dk.channel.expects(:direct).with(@dk.name)
+      @dk.react @reactor
+    end
   end
   
-  it "creates donkey" do
-  end
-
   context "ping" do
-    before(:each) do
-      @reactor = Donkey::Reactor.new(@name)
-    end
-    
     it "has no instance reacting" do
       @dk.ping.should == []
     end
@@ -37,27 +39,42 @@ describe "Donkey" do
   end
 end
 
-describe "Donkey::Rabbit" do
+describe "Donkey::Channel" do
   before(:each) do
-    @conn = mock("Connection")
-    @mq = mock("MQ")
-    @mq.stubs(:connection => @conn)
+    # @connection = mock("Connection")
+#     @channel = mock("MQ")
+#     @channel.stubs(:connection => @connection)
     
-    AMQP.stubs(:connect)
-    MQ.stubs(:new)
-
-    @rabbit = Donkey::Rabbit.new
-    @rabbit.stubs(:mq => @mq)
+    # AMQP.stubs(:connect)
+#     MQ.stubs(:new)
   end
 
-  it "has mq" do
-    # pp @rb
-    @rabbit.mq.should == @mq
+  it "creates a new AMQP channel" do
+    AMQP.expects(:connect)
+    MQ.expects(:new)
+    #"abc".expects :foo
+    Donkey::Channel.open
+  end
+
+  it "uses default settings to initialize AMQP" do
+    AMQP.expects(:connect).with(Donkey::Channel.default_settings)
+    MQ.expects(:new)
+    #"abc".expects :foo
+    Donkey::Channel.open
+  end
+
+  it "overrides default settings to initialize AMQP" do
+    MQ.expects(:new)
+    AMQP.expects(:connect).with(Donkey::Channel.default_settings.merge({ :overrided_setting => "overrided_value"}))
+    #"abc".expects :foo
+    Donkey::Channel.open({:overrided_setting => "overrided_value"})
   end
 end
 
 describe "Donkey::Reactor" do
   before(:each) do
+    AMQP.stubs(:connect)
+    MQ.stubs(:new)
     @name = "testing reactor"
     @donkey = Donkey.new(@name)
     @reactor = Donkey::Reactor.new(@donkey)

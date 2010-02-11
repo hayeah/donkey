@@ -8,11 +8,11 @@ class Donkey
   class Error < RuntimeError
   end
 
-  attr_reader :name, :rabbit
+  attr_reader :name, :channel
   def initialize(name)
     @name = name
     @reactors = []
-    @rabbit = Donkey::Rabbit.new
+    @channel = Donkey::Channel.open
   end
 
   def ping
@@ -20,17 +20,27 @@ class Donkey
   end
 
   def react(reactor)
+    self.channel.direct(self.name)
     @reactors << reactor
   end
 end
 
-class Donkey::Rabbit
+require 'forwardable'
+class Donkey::Channel
+  extend Forwardable
+
+  def_delegators :@mq, :direct, :fanout, :exchange
+
+  def self.open(settings={})
+    self.new(default_settings.merge(settings))
+  end
+
   def self.default_settings
     AMQP.settings
   end
 
   attr_reader :settings, :mq
-  def initializes(settings={})
+  def initialize(settings={})
     @settings = self.class.default_settings.merge(settings)
     @mq = MQ.new(AMQP.connect(@settings))
   end
