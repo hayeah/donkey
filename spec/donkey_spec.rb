@@ -69,22 +69,19 @@ describe "Donkey::Route" do
     end
 
     it "publishes" do
-      msg = Object.new
-      mock(msg).to { "to" }
-      mock(msg).payload { "payload" }
-      meta = { :foo => :bar }
-      mock(msg).meta { meta }
-      mock(@channel).publish("to","payload",meta.merge(:key => ""))
-      @public.send(:publish,msg)
+      mock(msg = Object.new).payload { "payload" }
+      opts = { :foo => :bar }
+      mock(@channel).publish("to","payload",opts.merge(:key => ""))
+      @public.send(:publish,"to",msg,opts)
     end
 
     it "calls" do
-      mock(@public).publish(is_a(Donkey::Message::Call))
+      mock(@public).publish("to",is_a(Donkey::Message::Call),:foo => :bar)
       @public.call("to","data",:foo => :bar)
     end
 
     it "casts" do
-      mock(@public).publish(is_a(Donkey::Message::Cast))
+      mock(@public).publish("to",is_a(Donkey::Message::Cast),:foo => :bar)
       @public.cast("to","data",:foo => :bar)
     end
   end
@@ -117,7 +114,7 @@ describe "Donkey::Message" do
     before(:each) do
       msg_klass = Class.new(Donkey::Message)
       stub(msg_klass).tag { "test_tag" }
-      @msg = msg_klass.new("to","data",{ :foo => :bar})
+      @msg = msg_klass.new("data")
     end
 
     it "tags data to indicate type" do
@@ -136,9 +133,7 @@ describe "Donkey::Message" do
   
   context "Call" do
     before(:each) do
-      @to="name"
-      @data = "data"
-      @call = Donkey::Message::Call.new(@to,@data)
+      @call = Donkey::Message::Call.new(@data = "data")
     end
 
     it "has tag" do
@@ -148,7 +143,7 @@ describe "Donkey::Message" do
 
   context "Cast" do
     before(:each) do
-      @msg = Donkey::Message::Cast.new(@to="to",@data="data",@meta={ :foo => :bar})
+      @msg = Donkey::Message::Cast.new(@data="data")
     end
 
     it "has tag" do

@@ -68,17 +68,25 @@ describe "Donkey" do
     q["auto_delete"].should == true
   end
 
-  it "makes a call" do
+  it "calls" do
     @donkey.call(@donkey.name,10)
     q = find_queue(@donkey.name)
     q.should_not be_nil
     q["messages"].should == 1
   end
 
-  it "pops synchronously" do
-    @donkey.call(@donkey.name,10)
-    mock(@reactor).on_message(is_a(Donkey::Message::Call))
-    @donkey.pop == true
-    find_queue(@donkey.name)["messages"].should == 0
+  it "casts" do
+    @donkey.cast(@donkey.name,10)
+    q = find_queue(@donkey.name)
+    q.should_not be_nil
+    q["messages"].should == 1
   end
+
+  # it "pops synchronously" do
+#     @donkey.call(@donkey.name,10)
+#     mock(@reactor).on_message(is_a(Donkey::Message::Call))
+#     @donkey.pop == true
+#     find_queue(@donkey.name)["messages"].should == 0
+#   end
+  
 end

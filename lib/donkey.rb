@@ -109,11 +109,9 @@ class Donkey::Message
     self.class.tag
   end
 
-  attr_reader :to, :meta, :data
-  def initialize(to_name,data,meta={})
-    @to   = to_name
+  attr_reader :data
+  def initialize(data)
     @data = data
-    @meta = meta
   end
 
   def tagged_data
@@ -161,22 +159,23 @@ class Donkey::Route
     # gets one message delivered
     def pop(opts={})
       @queue.pop(opts) do |header,payload|
-        
+        donkey.process(header,Donkey::Message.decode(payload))
+        # donkey.deliver
       end
     end
 
-    def call(to,data,meta={})
-      publish(Donkey::Message::Call.new(to,data,meta))
+    def call(to,data,opts={})
+      publish(to,Donkey::Message::Call.new(data),opts)
     end
 
-    def cast(to,data,meta={})
-      publish(Donkey::Message::Cast.new(to,data,meta))
+    def cast(to,data,opts={})
+      publish(to,Donkey::Message::Cast.new(data),opts)
     end
 
     private
     
-    def publish(message)
-      channel.publish(message.to,message.payload,message.meta.merge(:key => ""))
+    def publish(to,message,opts={})
+      channel.publish(to,message.payload,opts.merge(:key => ""))
     end
   end
 
