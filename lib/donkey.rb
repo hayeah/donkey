@@ -43,16 +43,6 @@ class Donkey
     # on_message(header,message)
   end
 
-  def on_message(header,message)
-    reactor = @reactor.new(self,header,message)
-    case message
-    when Donkey::Message::Call
-      reactor.on_call
-    when Donkey::Message::Cast
-      reactor.on_cast
-    end
-  end
-
   def pop
     public.pop
   end
