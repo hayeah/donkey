@@ -118,7 +118,7 @@ class Donkey::Message
     [tag,@data]
   end
   
-  def payload
+  def encode
     BERT.encode(self.tagged_data)
   end
 end
@@ -159,7 +159,7 @@ class Donkey::Route
     # gets one message delivered
     def pop(opts={})
       @queue.pop(opts) do |header,payload|
-        donkey.process(header,Donkey::Message.decode(payload))
+        donkey.deliver(header,Donkey::Message.decode(payload))
         # donkey.deliver
       end
     end
