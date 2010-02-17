@@ -16,9 +16,10 @@ class Donkey
     end
   end
 
-  attr_reader :id, :name, :channel
-  def initialize(name)
+  attr_reader :id, :name, :channel, :reactor
+  def initialize(name,reactor)
     @id = Donkey::UUID.generate
+    @reactor = reactor
     @name = name
     @channel = Donkey.channel
   end
@@ -35,6 +36,21 @@ class Donkey
 
   def cast(to,data,meta={})
     public.cast(to,data,meta)
+  end
+
+  def process(header,message)
+    # with a threadpool
+    # on_message(header,message)
+  end
+
+  def on_message(header,message)
+    reactor = @reactor.new(self,header,message)
+    case message
+    when Donkey::Message::Call
+      reactor.on_call
+    when Donkey::Message::Cast
+      reactor.on_cast
+    end
   end
 
   def pop
@@ -159,7 +175,7 @@ class Donkey::Route
     # gets one message delivered
     def pop(opts={})
       @queue.pop(opts) do |header,payload|
-        donkey.deliver(header,Donkey::Message.decode(payload))
+        donkey.process(header,Donkey::Message.decode(payload))
         # donkey.deliver
       end
     end
@@ -172,10 +188,17 @@ class Donkey::Route
       publish(to,Donkey::Message::Cast.new(data),opts)
     end
 
+    
+  # def process(header,message)
+    
+#   end
+
+
     private
     
     def publish(to,message,opts={})
-      channel.publish(to,message.payload,opts.merge(:key => ""))
+      channel.publish(to,message.encode,opts.merge(:key => ""))
+      message
     end
   end
 

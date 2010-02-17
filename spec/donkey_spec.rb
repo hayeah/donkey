@@ -5,7 +5,8 @@ describe "Donkey" do
     @channel = Object.new
     stub(Donkey).channel { @channel }
     stub(Donkey::UUID).generate { @uuid = "uuid" }
-    @donkey = Donkey.new("name")
+    @reactor = Object.new
+    @donkey = Donkey.new("name",@reactor)
     @public = Object.new
     @private = Object.new
     stub(@donkey).public { @public }
@@ -40,6 +41,32 @@ describe "Donkey" do
     @donkey.cast(*args)
   end
 
+  context "#on_message" do
+    before(:each) do
+      @header = Object.new
+    end
+    
+    it "reacts to message" do
+      @message = Donkey::Message::Call.new("data")
+      mock(@reactor).new(@donkey,@header,@message) { @reactor_obj }
+      mock(@reactor_obj).on_call
+      @donkey.on_message(@header,@message)
+    end
+
+    it "reacts to message" do
+      @message = Donkey::Message::Cast.new("data")
+      mock(@reactor).new(@donkey,@header,@message) { @reactor_obj }
+      mock(@reactor_obj).on_cast
+      @donkey.on_message(@header,@message)
+    end
+    
+  end
+  
+
+  it "has reactor" do
+    @donkey.reactor.should == @reactor
+  end
+
   it "pops a message" do
     pending
     mock(@donkey.private).pop
@@ -51,7 +78,7 @@ describe "Donkey::Route" do
   before(:each) do
     @channel = Object.new
     stub(Donkey).channel { @channel }
-    @donkey = Donkey.new("name")
+    @donkey = Donkey.new("name",@reactor=Object.new)
   end
 
   context "Public" do
@@ -69,7 +96,7 @@ describe "Donkey::Route" do
     end
 
     it "publishes" do
-      mock(msg = Object.new).payload { "payload" }
+      mock(msg = Object.new).encode { "payload" }
       opts = { :foo => :bar }
       mock(@channel).publish("to","payload",opts.merge(:key => ""))
       @public.send(:publish,"to",msg,opts)
@@ -126,7 +153,7 @@ describe "Donkey::Message" do
     it "encodes data" do
       mock(@msg).tagged_data { "tagged-data" }
       mock(BERT).encode("tagged-data") { "bert" }
-      @msg.payload.should == "bert"
+      @msg.encode.should == "bert"
     end
   end
   
