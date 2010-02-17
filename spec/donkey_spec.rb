@@ -112,6 +112,27 @@ describe "Donkey::Message" do
   it "raises if a tag has no associated class" do
     lambda { Donkey::Message.tag_to_class("fwajelkfjlfla") }.should raise_error
   end
+
+  context "Message" do
+    before(:each) do
+      msg_klass = Class.new(Donkey::Message)
+      stub(msg_klass).tag { "test_tag" }
+      @msg = msg_klass.new("to","data",{ :foo => :bar})
+    end
+
+    it "tags data to indicate type" do
+      @msg.tagged_data.should be_an(Array)
+      @msg.tagged_data[0].should == "test_tag"
+      @msg.tagged_data[1].should == "data"
+    end
+
+    it "encodes data" do
+      mock(@msg).tagged_data { "tagged-data" }
+      mock(BERT).encode("tagged-data") { "bert" }
+      @msg.payload.should == "bert"
+    end
+  end
+  
   
   context "Call" do
     before(:each) do
@@ -123,35 +144,17 @@ describe "Donkey::Message" do
     it "has tag" do
       @call.tag.should == "call"
     end
-
-    it "tags data to indicate type" do
-      @call.tagged_data.should be_an(Array)
-      @call.tagged_data[0].should == @call.tag
-      @call.tagged_data[1].should == @data
-    end
-
-    it "encodes data" do
-      mock(@call).tagged_data { "tagged-data" }
-      mock(BERT).encode("tagged-data") { "bert" }
-      @call.payload.should == "bert"
-    end
-
-    # it "replies to donkey" do
-#       pending
-#       reply = @call.reply("reply")
-#       reply.should 
-#     end
-    
   end
 
-#   context "Cast" do
-#     before(:each) do
-#       @donkey = Object.new
-#       @to="destination"
-#       @data = "data"
-#       @cast = Donkey::Message::Cast.new(@donkey,@to,@data)
-#     end
-#   end
+  context "Cast" do
+    before(:each) do
+      @msg = Donkey::Message::Cast.new(@to="to",@data="data",@meta={ :foo => :bar})
+    end
+
+    it "has tag" do
+      @msg.tag.should == "cast"
+    end
+  end
 end
 
 describe "Donkey::Channel" do

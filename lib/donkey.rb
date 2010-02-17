@@ -84,7 +84,8 @@ class Donkey::Message
   end
 
   TAG_TO_CLASS = {
-    "call" => Call
+    "call" => Call,
+    "cast" => Cast
   }
   CLASS_TO_TAG = TAG_TO_CLASS.inject({}) do |h,(k,v)|
     h[v] = k
@@ -107,10 +108,6 @@ class Donkey::Message
   def tag
     self.class.tag
   end
-
-  # def self.decode
-    
-#   end
 
   attr_reader :to, :meta, :data
   def initialize(to_name,data,meta={})
