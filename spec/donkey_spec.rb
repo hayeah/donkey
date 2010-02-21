@@ -41,27 +41,10 @@ describe "Donkey" do
     @donkey.cast(*args)
   end
 
-  context "#on_message" do
-    before(:each) do
-      @header = Object.new
-    end
-    
-    it "reacts to message" do
-      @message = Donkey::Message::Call.new("data")
-      mock(@reactor).new(@donkey,@header,@message) { @reactor_obj }
-      mock(@reactor_obj).on_call
-      @donkey.on_message(@header,@message)
-    end
-
-    it "reacts to message" do
-      @message = Donkey::Message::Cast.new("data")
-      mock(@reactor).new(@donkey,@header,@message) { @reactor_obj }
-      mock(@reactor_obj).on_cast
-      @donkey.on_message(@header,@message)
-    end
-    
+  it "processes message" do
+    mock(@reactor).process(@donkey,header="header",message="message")
+    @donkey.process(header,message)
   end
-  
 
   it "has reactor" do
     @donkey.reactor.should == @reactor
@@ -71,6 +54,59 @@ describe "Donkey" do
     pending
     mock(@donkey.private).pop
     @donkey.pop
+  end
+end
+
+describe "Donkey::Reactor" do
+  before(:each) do
+    @header = Object.new
+    @donkey = Object.new
+  end
+
+  def call
+    @message = Donkey::Message::Call.new("data")
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message)
+  end
+
+  def cast
+    @message = Donkey::Message::Cast.new("data")
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message)
+  end
+
+  it "processes" do
+    mock(Donkey::Reactor).new(donkey="donkey",header="header",message="message") { mock!.process.subject }
+    Donkey::Reactor.process(donkey,header,message)
+  end
+  
+  context "#on_message" do
+    it "reacts to call" do
+      call
+      mock(@reactor).on_call
+      @reactor.process
+    end
+
+    it "reacts to cast" do
+      cast
+      mock(@reactor).on_cast
+      @reactor.process
+    end
+
+    it "handles error with on_error" do
+      cast
+      error = Class.new(RuntimeError).new("test error")
+      # welp... there's probably a better way to test this
+      class << @reactor; self end.instance_eval do
+        define_method(:on_cast) do
+          raise error
+        end
+      end
+      mock(@reactor).on_error(error)
+      @reactor.process
+    end
+  end
+
+  it "discards" do
+    lambda { @reactor}
   end
 end
 
@@ -111,11 +147,35 @@ describe "Donkey::Route" do
       mock(@public).publish("to",is_a(Donkey::Message::Cast),:foo => :bar)
       @public.cast("to","data",:foo => :bar)
     end
+
+    it "pops a message" do
+      header = "header"
+      payload = "payload"
+      queue = Object.new
+      class << queue
+        attr_reader :captured_block
+        def pop(opts,&block)
+          @captured_block = block
+        end
+      end
+      # mock the object we are testing to return the queue double
+      mock(@public).queue { queue }
+      mock(@public).process(header,payload)
+      
+      @public.pop
+      # test the call back
+      queue.captured_block.call(header,payload)
+    end
+
+    it "processes" do
+      mock(Donkey::Message).decode("payload") { "message" }
+      mock(@donkey).process("header","message")
+      @public.send(:process,"header","payload")
+    end
   end
 
   context "Private" do
     it "delcares" do
-      # FIX I don't know how not to test the implementation
       mock(@channel).direct(@donkey.name)
       mock(@channel).queue(@donkey.id,:auto_delete => true) { mock!.bind(@donkey.name,:key => @donkey.id).subject }
       r = Donkey::Route::Private.declare(@donkey)
@@ -135,6 +195,12 @@ describe "Donkey::Message" do
 
   it "raises if a tag has no associated class" do
     lambda { Donkey::Message.tag_to_class("fwajelkfjlfla") }.should raise_error
+  end
+
+  context ".decode" do
+    it "raises DecodeError on bad payload" do
+      lambda { Donkey::Message.decode("junk data") }.should raise_error(Donkey::Message::DecodeError)
+    end
   end
 
   context "Message" do

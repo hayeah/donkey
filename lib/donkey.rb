@@ -8,6 +8,9 @@ require 'monkey/mq'
 class Donkey
   require "donkey/uuid"
   require 'donkey/rabbit'
+
+  class Error < RuntimeError
+  end
   
   class << self
     def channel
@@ -39,12 +42,45 @@ class Donkey
   end
 
   def process(header,message)
-    # with a threadpool
-    # on_message(header,message)
+    # TODO should use EM.defer
+    @reactor.process(self,header,message)
   end
 
-  def pop
-    public.pop
+  def pop(opts={})
+    public.pop(opts)
+  end
+end
+
+class Donkey::Reactor < Struct.new(:donkey, :header, :message)
+  def self.process(donkey,header,message)
+    self.new(donkey,header,message).process
+  end
+  
+  def process
+    begin
+      case message
+      when Donkey::Message::Call
+        on_call
+      when Donkey::Message::Cast
+        on_cast
+      end
+    rescue => error
+      # FIXME what happens if it raises again here?
+      ## Needs to do something, otherwise the thread would be killed.
+      on_error(error)
+    end
+  end
+
+  def on_call
+    raise "abstract"
+  end
+
+  def on_cast
+    raise "abstract"
+  end
+
+  def on_error(error)
+    raise error
   end
 end
 
@@ -59,12 +95,14 @@ class Donkey::Channel
   end
 
   def self.default_settings
-    AMQP.settings
+    # AMQP.settings
+    AMQP.settings.merge(:logging => ENV["trace"])
   end
 
   def self.ensure_eventmachine
     unless EM.reactor_running?
-      Thread.new { EM.run }
+      t = Thread.new { EM.run }
+      t.abort_on_exception = true
     end
   end
 
@@ -83,6 +121,9 @@ end
 class Donkey::Message
   require 'bert'
 
+  class DecodeError < Donkey::Error
+  end
+
   class Call < self
   end
 
@@ -96,6 +137,15 @@ class Donkey::Message
   CLASS_TO_TAG = TAG_TO_CLASS.inject({}) do |h,(k,v)|
     h[v] = k
     h
+  end
+
+  def self.decode(payload)
+    begin
+      tag, data = BERT.decode(payload)
+      tag_to_class(tag).new(data)
+    rescue
+      raise DecodeError
+    end
   end
 
   def self.tag_to_class(tag)
@@ -161,12 +211,11 @@ class Donkey::Route
       @exchange = channel.direct(donkey.name)
       @queue = channel.queue(donkey.name).bind(donkey.name,:key => "")
     end
-
+    
     # gets one message delivered
     def pop(opts={})
-      @queue.pop(opts) do |header,payload|
-        donkey.process(header,Donkey::Message.decode(payload))
-        # donkey.deliver
+      queue.pop(opts) do |header,payload|
+        process(header,payload)
       end
     end
 
@@ -178,13 +227,12 @@ class Donkey::Route
       publish(to,Donkey::Message::Cast.new(data),opts)
     end
 
-    
-  # def process(header,message)
-    
-#   end
-
-
     private
+
+    def process(header,payload)
+      # FIXME decide what to do it it fails here. Right now, it just dies.
+      donkey.process(header,Donkey::Message.decode(payload))
+    end
     
     def publish(to,message,opts={})
       channel.publish(to,message.encode,opts.merge(:key => ""))

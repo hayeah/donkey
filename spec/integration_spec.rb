@@ -28,9 +28,42 @@ describe "Donkey" do
 
   include RabbitHelper
 
+  class TestReactor < Donkey::Reactor
+    class Data < Struct.new(:donkey,:header,:message)
+    end
+
+    class Timeout < RuntimeError
+    end
+
+    def initialize
+      @queue = Queue.new
+    end
+    
+    def process(donkey,header,message)
+      @queue << Data.new(donkey,header,message)
+      true
+    end
+
+    def pop(timeout=3)
+      timer = EM::Timer.new(timeout) do
+        @queue << Timeout.new
+      end
+      
+      case r=@queue.pop
+      when Data
+        timer.cancel
+        r
+      when Timeout
+        raise r
+      end
+    end
+    
+  end
+
   before(:each) do
     Donkey::Rabbit.restart
-    @donkey = Donkey.new("test")
+    @reactor = TestReactor.new
+    @donkey = Donkey.new("test",@reactor)
     @donkey.create
   end
   
@@ -82,11 +115,15 @@ describe "Donkey" do
     q["messages"].should == 1
   end
 
-  # it "pops synchronously" do
-#     @donkey.call(@donkey.name,10)
-#     mock(@reactor).on_message(is_a(Donkey::Message::Call))
-#     @donkey.pop == true
-#     find_queue(@donkey.name)["messages"].should == 0
-#   end
-  
+  it "pops a message" do
+    @donkey.cast(@donkey.name,data="data")
+    @donkey.pop
+    r = @reactor.pop
+    r.header.should be_a(MQ::Header)
+    r.message.should be_a(Donkey::Message::Cast)
+    r.message.data.should == data
+    find_queue(@donkey.name)["messages"].should == 0
+  end
+
+  # (:ack => true)
 end

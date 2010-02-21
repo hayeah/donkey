@@ -9,3 +9,20 @@ require 'spec/autorun'
 Spec::Runner.configure do |config|
   config.mock_with :rr
 end
+
+class Object
+  def eigenclass(&block)
+    k = class << self; self end
+    if block
+      k.instance_eval(&block)
+    end
+    k
+  end
+  
+  def def(name,&block)
+    eigenclass.instance_eval {
+      define_method(name,&block)
+    }
+    self
+  end
+end
