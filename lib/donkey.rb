@@ -95,9 +95,16 @@ class Donkey
   end
 end
 
-class Donkey::Reactor < Struct.new(:donkey, :header, :message)
+class Donkey::Reactor
   def self.process(donkey,header,message)
     self.new(donkey,header,message).process
+  end
+
+  attr_reader :donkey, :header, :message
+  def initialize(donkey,header,message)
+    @donkey = donkey
+    @header = header
+    @message = message
   end
   
   def process
