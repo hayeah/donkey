@@ -111,15 +111,36 @@ class Donkey::Reactor
     begin
       case message
       when Donkey::Message::Call
-        on_call
+        result = on_call
+        reply(result) unless replied?
       when Donkey::Message::Cast
         on_cast
       end
     rescue => error
-      # FIXME what happens if it raises again here?
-      ## Needs to do something, otherwise the thread would be killed.
-      on_error(error)
+      begin
+        on_error(error)
+      rescue => error2
+        die(error)
+      end
     end
+  end
+
+  def die(error)
+    # TODO wants to enable user definable logging here
+    $stderr.puts error.to_s
+    $stderr.puts error.backtrace
+    Donkey.stop
+  end
+
+  def reply(result)
+    raise Donkey::Error, "can only reply to Call" unless Donkey::Message::Call === message
+    raise Donkey::Error, "can only reply once" if @replied
+    @replied = true
+    donkey.reply(header,message,result)
+  end
+
+  def replied?
+    @replied == true
   end
 
   def on_call
@@ -302,9 +323,9 @@ class Donkey::Route
     end
 
     def call(to,data,tag,opts={})
-      # :reply_to => donkey.id
-      # :
-      publish(to,Donkey::Message::Call.new(data),opts)
+      publish(to,Donkey::Message::Call.new(data),opts.merge(:reply_to => donkey.name,
+                                                            :key => donkey.id,
+                                                            :message_id => tag.to_s))
     end
 
     def cast(to,data,opts={})

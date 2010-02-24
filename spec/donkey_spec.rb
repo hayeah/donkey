@@ -83,7 +83,7 @@ describe "Donkey" do
     mock(@public).call(*args = ["to","data"])
     f = @donkey.call!(*args)
     f.should be_a(Donkey::Future)
-    f.wait.should ==
+    # f.wait.should ==
   end
 
   it "casts" do
@@ -121,11 +121,34 @@ describe "Donkey::Reactor" do
     mock(Donkey::Reactor).new(donkey="donkey",header="header",message="message") { mock!.process.subject }
     Donkey::Reactor.process(donkey,header,message)
   end
+
+  context "#reply" do
+    before(:each) do
+      call
+      @result = "result"
+      mock(@donkey).reply(@header,@message,@result)
+    end
+    
+    it "replies" do
+      @reactor.reply(@result)
+    end
+    
+    it "raises if replied twice" do
+      @reactor.reply(@result)
+      lambda { @reactor.reply(@result) }.should raise_error(Donkey::Error)
+    end
+
+    it "returns true if already replied" do
+      @reactor.reply(@result)
+      @reactor.replied?.should == true
+    end
+  end
   
-  context "#on_message" do
+  context "#process" do
     it "reacts to call" do
       call
-      mock(@reactor).on_call
+      mock(@reactor).on_call { "result" }
+      mock(@reactor).reply("result")
       @reactor.process
     end
 
@@ -137,20 +160,32 @@ describe "Donkey::Reactor" do
 
     it "handles error with on_error" do
       cast
-      error = Class.new(RuntimeError).new("test error")
-      # welp... there's probably a better way to test this
-      class << @reactor; self end.instance_eval do
-        define_method(:on_cast) do
-          raise error
-        end
+      error = RuntimeError.new("test error")
+      @reactor.def(:on_cast) do
+        raise error
       end
       mock(@reactor).on_error(error)
       @reactor.process
     end
+
+    it "dies on_error itself raises error" do
+      cast
+      error = RuntimeError.new("test error")
+      @reactor.def(:on_cast) do
+        raise error
+      end
+      mock(@reactor).die(error)
+      @reactor.process
+    end
   end
 
-  it "discards" do
-    lambda { @reactor}
+  it "dies and prints error" do
+    call
+    error = RuntimeError.new("error")
+    mock($stderr).puts.with_any_args.twice
+    mock(error).to_s
+    mock(error).backtrace
+    @reactor.die(error)
   end
 end
 
@@ -182,8 +217,13 @@ describe "Donkey::Route" do
     end
 
     it "calls" do
-      mock(@public).publish("to",is_a(Donkey::Message::Call),:foo => :bar)
-      @public.call("to","data",:foo => :bar)
+      tag="tag"
+      mock(@public).publish("to",is_a(Donkey::Message::Call),
+                            { :foo => :bar,
+                              :reply_to => @donkey.name,
+                              :key => @donkey.id,
+                              :message_id => tag})
+      @public.call("to","data",tag,:foo => :bar)
     end
 
     it "casts" do
