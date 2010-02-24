@@ -61,6 +61,7 @@ describe "Donkey" do
   end
 
   before(:each) do
+    Donkey.stop
     Donkey::Rabbit.restart
     @reactor = TestReactor.new
     @donkey = Donkey.new("test",@reactor)

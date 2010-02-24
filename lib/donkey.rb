@@ -13,10 +13,50 @@ class Donkey
   end
   
   class << self
-    def default_settings
-      {}
+    # FIXME hmmm... this would render all the
+    # previously created objects useless. So for
+    # example Donkey.default_channel caches a
+    # default channel. That would break.
+    def stop
+      if EM.reactor_running?
+        # wait for EventMachine cleanup
+        EM.stop_event_loop
+        t = EM.instance_variable_get(:@reactor_thread)
+        t.join
+      end
+      # clean up AMQP
+      Thread.current[:mq] = nil
+      AMQP.instance_variable_set('@conn', nil)
+      # FIXME clean up donkey
+      @default_channel = nil
     end
 
+    attr_accessor :default_settings
+    Donkey.default_settings = AMQP.settings
+
+    # create donkey objects with a channel
+    def with(arg)
+      case arg
+      when Donkey::Channel
+        c = arg
+      when Hash
+        c = Donkey::Channel.open(arg)
+      else
+        raise Error, "expects a channel"
+      end
+      begin
+        old_with_channel = @with_channel
+        @with_channel = c
+        yield
+      ensure
+        @with_channel = old_with_channel
+      end
+    end
+    
+    def channel
+      @with_channel || default_channel
+    end
+    
     def default_channel
       @default_channel ||= Donkey::Channel.open(Donkey.default_settings)
       @default_channel
@@ -24,7 +64,7 @@ class Donkey
   end
 
   attr_reader :id, :name, :channel, :reactor
-  def initialize(name,reactor,channel=Donkey.default_channel)
+  def initialize(name,reactor,channel=Donkey.channel)
     @id = Donkey::UUID.generate
     @reactor = reactor
     @name = name
@@ -92,7 +132,7 @@ class Donkey::Channel
   require 'forwardable'
   extend Forwardable
 
-  def_delegators :@mq, :direct, :fanout, :topic, :queue
+  def_delegators :@mq, :direct, :fanout, :topic, :queue, :publish
   
   def self.open(settings={})
     self.new(settings)
@@ -124,7 +164,7 @@ class Donkey::Channel
       end
     }
   end
-
+  
   def on_connect(&block)
     if block
       # setting on_connect callback

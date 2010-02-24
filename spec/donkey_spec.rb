@@ -5,6 +5,44 @@ describe "Donkey" do
     stub(Donkey).default_channel { "default channel" }
     Donkey.new("test","reactor").channel.should == Donkey.default_channel
   end
+
+  it "uses current channel" do
+    stub(Donkey).channel { "current channel" }
+    Donkey.new("test","reactor").channel.should == Donkey.channel
+  end
+
+  context ".with" do
+    class FakeChannel < Donkey::Channel
+      def initialize
+      end
+    end
+    before(:each) do
+      @channel = FakeChannel.new
+      @default_channel = Object.new
+      stub(Donkey).default_channel { @default_channel }
+    end
+    it "opens a channel for block context" do
+      opts = { :foo => 1 }
+      @channel = Object.new
+      mock(Donkey::Channel).open(opts) { @channel }
+      Donkey.with(opts) {
+        Donkey.channel.should == @channel
+      }
+    end
+
+    it "uses opened channel for block context" do
+      Donkey.with(@channel) {
+        Donkey.channel.should == @channel
+      }
+    end
+
+    it "restores context outside block context" do
+      Donkey.with(@channel) {
+        Donkey.channel.should == @channel
+      }
+      Donkey.channel.should == Donkey.default_channel
+    end
+  end
 end
 
 describe "Donkey" do
@@ -53,12 +91,6 @@ describe "Donkey" do
 
   it "has reactor" do
     @donkey.reactor.should == @reactor
-  end
-
-  it "pops a message" do
-    pending
-    mock(@donkey.private).pop
-    @donkey.pop
   end
 end
 
