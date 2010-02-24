@@ -13,18 +13,22 @@ class Donkey
   end
   
   class << self
-    def channel
-      @channel ||= Donkey::Channel.open
-      @channel
+    def default_settings
+      {}
+    end
+
+    def default_channel
+      @default_channel ||= Donkey::Channel.open(Donkey.default_settings)
+      @default_channel
     end
   end
 
   attr_reader :id, :name, :channel, :reactor
-  def initialize(name,reactor)
+  def initialize(name,reactor,channel=Donkey.default_channel)
     @id = Donkey::UUID.generate
     @reactor = reactor
     @name = name
-    @channel = Donkey.channel
+    @channel = channel
   end
 
   attr_reader :public, :private
@@ -95,8 +99,7 @@ class Donkey::Channel
   end
 
   def self.default_settings
-    # AMQP.settings
-    AMQP.settings.merge(:logging => ENV["trace"])
+    AMQP.settings
   end
 
   def self.ensure_eventmachine
@@ -106,15 +109,47 @@ class Donkey::Channel
     end
   end
 
-  attr_reader :settings, :mq
+  attr_reader :settings, :mq, :connection
   def initialize(settings={})
     self.class.ensure_eventmachine
     @settings = self.class.default_settings.merge(settings)
-    @mq = MQ.new(AMQP.connect(@settings))
+    @connection = AMQP.connect(@settings)
+    @mq = MQ.new(@connection)
+    @connection.connection_status { |sym|
+      case sym
+      when :connected
+        self.on_connect
+      when :disconnected
+        self.on_disconnect
+      end
+    }
   end
 
-  def publish(name,message,opts={})
-    @mq.publish(name,message,opts)
+  def on_connect(&block)
+    if block
+      # setting on_connect callback
+      @on_connect = block
+    else
+      # eventmahcine invoking callback
+      @on_connect.call if @on_connect
+    end
+  end
+
+  # AMQP gem automatically reconnects. this
+  # callback should be used for side-effect only,
+  # or to drastic measures like exit the process.
+  #
+  # Upon reconnection, all the entities this
+  # connection knows about would be reset &
+  # redeclared.
+  def on_disconnect(&block)
+    if block
+      # setting on_connect callback
+      @on_disconnect = block
+    else
+      # eventmahcine invoking callback
+      @on_disconnect.call if @on_disconnect
+    end
   end
 end
 

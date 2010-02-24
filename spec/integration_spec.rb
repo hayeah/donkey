@@ -115,15 +115,25 @@ describe "Donkey" do
     q["messages"].should == 1
   end
 
-  it "pops a message" do
-    @donkey.cast(@donkey.name,data="data")
+  it "pops one message" do
+    @donkey.cast(@donkey.name,data="data1")
+    @donkey.cast(@donkey.name,data="data2")
+    # pop first message
     @donkey.pop
     r = @reactor.pop
     r.header.should be_a(MQ::Header)
     r.message.should be_a(Donkey::Message::Cast)
-    r.message.data.should == data
+    r.message.data.should == "data1"
+    find_queue(@donkey.name)["messages"].should == 1
+    # pop second message
+    @donkey.pop
+    r = @reactor.pop
+    r.message.data.should == "data2"
     find_queue(@donkey.name)["messages"].should == 0
   end
 
-  # (:ack => true)
+  # it "pops with ack" do
+#     pending
+#   end
+
 end

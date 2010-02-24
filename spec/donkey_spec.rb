@@ -1,9 +1,16 @@
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 describe "Donkey" do
+  it "uses default channel" do
+    stub(Donkey).default_channel { "default channel" }
+    Donkey.new("test","reactor").channel.should == Donkey.default_channel
+  end
+end
+
+describe "Donkey" do
   before(:each) do
     @channel = Object.new
-    stub(Donkey).channel { @channel }
+    stub(Donkey).default_channel { @channel }
     stub(Donkey::UUID).generate { @uuid = "uuid" }
     @reactor = Object.new
     @donkey = Donkey.new("name",@reactor)
@@ -12,6 +19,8 @@ describe "Donkey" do
     stub(@donkey).public { @public }
     stub(@donkey).private { @private }
   end
+
+  
   
   it "creates routes" do
     mock(Donkey::Route::Public).declare(@donkey)
@@ -26,11 +35,7 @@ describe "Donkey" do
   it "has name" do
     @donkey.name.should == "name"
   end
-
-  it "uses default channel" do
-    @donkey.channel.should == Donkey.channel
-  end
-
+  
   it "calls" do
     mock(@public).call(*args = ["to","data",{"foo" => "bar"}])
     @donkey.call(*args)
@@ -113,8 +118,7 @@ end
 describe "Donkey::Route" do
   before(:each) do
     @channel = Object.new
-    stub(Donkey).channel { @channel }
-    @donkey = Donkey.new("name",@reactor=Object.new)
+    @donkey = Donkey.new("name",@reactor=Object.new,@channel)
   end
 
   context "Public" do
@@ -247,19 +251,23 @@ end
 
 describe "Donkey::Channel" do
   context "open" do
-    it "uses default settings to initialize AMQP" do
-      mock(AMQP).connect(Donkey::Channel.default_settings)
-      mock(MQ).new.with_any_args
+    before(:each) do
+      connection = Object.new
+      mock(connection).connection_status
       mock(Donkey::Channel).ensure_eventmachine
-      Donkey::Channel.open
+      mock(AMQP).connect(is_a(Hash)) { connection }
+      mock(MQ).new(connection)
+    end
+    
+    it "uses default settings to initialize AMQP" do
+      c = Donkey::Channel.open
+      c.settings.should == Donkey::Channel.default_settings
     end
 
     it "overrides default settings to initialize AMQP" do
-      mock(AMQP).connect(Donkey::Channel.default_settings.merge({ :overrided_setting => "overrided_value"}))
-      mock(MQ).new.with_any_args
-      Donkey::Channel.open({:overrided_setting => "overrided_value"})
+      c = Donkey::Channel.open(:foo => 10)
+      c.settings.should == Donkey::Channel.default_settings.merge(:foo => 10)
     end
-    
   end
 
   # FIXME dunno how to test this
