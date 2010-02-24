@@ -109,6 +109,17 @@ describe "Donkey" do
     q["messages"].should == 1
   end
 
+  it "calls itself" do
+    future = @donkey.call!(@donkey.name,10)
+    future.should be_a(Donkey::Future)
+    q = find_queue(@donkey.name)
+    q["messages"].should == 1
+    @donkey.pop
+    future.wait.should == 10
+    q = find_queue(@donkey.name)
+    q["messages"].should == 0
+  end
+
   it "casts" do
     @donkey.cast(@donkey.name,10)
     q = find_queue(@donkey.name)

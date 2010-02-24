@@ -58,8 +58,6 @@ describe "Donkey" do
     stub(@donkey).private { @private }
   end
 
-  
-  
   it "creates routes" do
     mock(Donkey::Route::Public).declare(@donkey)
     mock(Donkey::Route::Private).declare(@donkey)
@@ -75,8 +73,17 @@ describe "Donkey" do
   end
   
   it "calls" do
+    pending
     mock(@public).call(*args = ["to","data",{"foo" => "bar"}])
     @donkey.call(*args)
+  end
+
+  it "calls and returns future" do
+    pending
+    mock(@public).call(*args = ["to","data"])
+    f = @donkey.call!(*args)
+    f.should be_a(Donkey::Future)
+    f.wait.should ==
   end
 
   it "casts" do
