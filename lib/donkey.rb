@@ -314,19 +314,26 @@ class Donkey::Route
     raise "abstract"
   end
 
-  protected
-  
-  def publish
-    raise "abstract"
+  # gets one message delivered
+  def pop(opts={})
+    queue.pop(opts) do |header,payload|
+      process(header,payload)
+    end
   end
+  
+  def subscribe(opts={})
+    queue.subscribe(opts) do |header,payload|
+      process(header,payload)
+    end
+  end
+
+  protected
 
   def publish(to,message,opts={})
     channel.publish(to,message.encode,opts.merge(:key => ""))
     message
   end
-
-  private
-
+  
   def process(header,payload)
     donkey.process(header,Donkey::Message.decode(payload))
   end
@@ -336,13 +343,6 @@ class Donkey::Route
     def declare
       @exchange = channel.direct(donkey.name)
       @queue = channel.queue(donkey.name).bind(donkey.name,:key => "")
-    end
-    
-    # gets one message delivered
-    def pop(opts={})
-      queue.pop(opts) do |header,payload|
-        process(header,payload)
-      end
     end
 
     def call(to,data,tag,opts={})
@@ -367,12 +367,6 @@ class Donkey::Route
       publish(to,Donkey::Message::Back.new(data),
               opts.merge({ :message_id => tag.to_s,
                            :key => id}))
-    end
-
-    def subscribe(opts={})
-      @queue.subscribe(opts) do |header,payload|
-        
-      end
     end
   end
 end
