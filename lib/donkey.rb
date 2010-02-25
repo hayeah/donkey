@@ -85,6 +85,12 @@ class Donkey
     public.cast(to,data,meta)
   end
 
+  # only Reactor should call this (by magic...)
+  def reply(header,message,result,opts={})
+    # message not used
+    private.reply(header.reply_to,header.key,result,header.message_id,opts)
+  end
+  
   def process(header,message)
     # TODO should use EM.defer
     @reactor.process(self,header,message)
@@ -132,11 +138,11 @@ class Donkey::Reactor
     Donkey.stop
   end
 
-  def reply(result)
-    raise Donkey::Error, "can only reply to Call" unless Donkey::Message::Call === message
+  def reply(result,opts={})
+    raise Donkey::Error, "can only reply to a call" unless Donkey::Message::Call === message
     raise Donkey::Error, "can only reply once" if @replied
     @replied = true
-    donkey.reply(header,message,result)
+    donkey.reply(header,message,result,opts)
   end
 
   def replied?
@@ -230,12 +236,18 @@ class Donkey::Message
   class Call < self
   end
 
+  class Back < self
+  end
+  
   class Cast < self
   end
 
+  
+
   TAG_TO_CLASS = {
     "call" => Call,
-    "cast" => Cast
+    "cast" => Cast,
+    "back" => Back
   }
   CLASS_TO_TAG = TAG_TO_CLASS.inject({}) do |h,(k,v)|
     h[v] = k
@@ -308,6 +320,17 @@ class Donkey::Route
     raise "abstract"
   end
 
+  def publish(to,message,opts={})
+    channel.publish(to,message.encode,opts.merge(:key => ""))
+    message
+  end
+
+  private
+
+  def process(header,payload)
+    donkey.process(header,Donkey::Message.decode(payload))
+  end
+  
   class Public < self
     attr_reader :exchange, :queue
     def declare
@@ -331,18 +354,6 @@ class Donkey::Route
     def cast(to,data,opts={})
       publish(to,Donkey::Message::Cast.new(data),opts)
     end
-
-    private
-
-    def process(header,payload)
-      # FIXME decide what to do it it fails here. Right now, it just dies.
-      donkey.process(header,Donkey::Message.decode(payload))
-    end
-    
-    def publish(to,message,opts={})
-      channel.publish(to,message.encode,opts.merge(:key => ""))
-      message
-    end
   end
 
   class Private < self
@@ -352,8 +363,16 @@ class Donkey::Route
       @queue = channel.queue(@id,:auto_delete => true).bind(donkey.name,:key => @id)
     end
 
-    def publish(message)
-      channel.publish(message.to,message.payload,:key => message.id)
+    def reply(to,id,data,tag,opts={})
+      publish(to,Donkey::Message::Back.new(data),
+              opts.merge({ :message_id => tag.to_s,
+                           :key => id}))
+    end
+
+    def subscribe(opts={})
+      @queue.subscribe(opts) do |header,payload|
+        
+      end
     end
   end
 end

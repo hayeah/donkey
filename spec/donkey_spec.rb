@@ -91,6 +91,15 @@ describe "Donkey" do
     @donkey.cast(*args)
   end
 
+  it "replies" do
+    mock(@header).reply_to { "reply_to" }
+    mock(@header).key { "reply_to_id" }
+    mock(@header).message_id { "tag" }
+    opts = { :foo => :bar }
+    mock(@private).reply("reply_to","reply_to_id","result","tag",opts)
+    @donkey.reply(@header,message=Object.new,"result",opts)
+  end
+  
   it "processes message" do
     mock(@reactor).process(@donkey,header="header",message="message")
     @donkey.process(header,message)
@@ -126,7 +135,7 @@ describe "Donkey::Reactor" do
     before(:each) do
       call
       @result = "result"
-      mock(@donkey).reply(@header,@message,@result)
+      mock(@donkey).reply(@header,@message,@result,is_a(Hash))
     end
     
     it "replies" do
@@ -258,14 +267,24 @@ describe "Donkey::Route" do
   end
 
   context "Private" do
-    it "delcares" do
+    before(:each) do
       mock(@channel).direct(@donkey.name)
-      mock(@channel).queue(@donkey.id,:auto_delete => true) { mock!.bind(@donkey.name,:key => @donkey.id).subject }
-      r = Donkey::Route::Private.declare(@donkey)
+      mock(@channel).queue(@donkey.id,:auto_delete => true) {
+        mock!.bind(@donkey.name,:key => @donkey.id).subject
+      }
+      @private = Donkey::Route::Private.declare(@donkey)
     end
 
-    it "publishes" do
+    it "declares" do
       
+    end
+
+    it "replies" do
+      data="data"
+      mock(Donkey::Message::Back).new("data") { "back-message" }
+      mock(@private).publish("to","back-message",
+                             {:foo => :bar, :key => "id", :message_id => "tag"})
+      @private.reply("to","id","data","tag",{ :foo => :bar })
     end
   end
 end
