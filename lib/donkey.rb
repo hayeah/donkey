@@ -101,6 +101,116 @@ class Donkey
   end
 end
 
+class Donkey::Ticket < Struct.new(:value)
+  class Expired < Donkey::Error
+  end
+  
+  def self.next
+    (@mutex ||= Mutex.new).synchronize {
+      @counter ||= 0
+      @counter += 1
+    }
+    self.new(@counter.to_s)
+  end
+
+  def initialize(v)
+    @value = v.to_s
+    @taken = false
+  end
+  
+  def value
+    @value
+  end
+
+  def take!
+    @taken = true
+    self
+  end
+
+  def taken?
+    @taken == true
+  end
+end
+
+class Donkey::Waiter
+  attr_reader :pending, :received
+  def initialize(*keys,&block)
+    @sucess_callback = block
+    @keys = keys
+    @pending  = Set.new(@keys)
+    @received = {} # map(key => value)
+  end
+
+  def timeout
+    
+  end
+
+  def ready?
+    @pending.empty?
+  end
+  
+  private
+  def on_timeout
+    @tickets.each do |ticket|
+      self.class.unregister(ticket)
+    end
+    @done = true
+    if not done? && @timeout_callback
+      @timeout_callback.call(self)
+    end
+  end
+
+  def signal(ticket,value)
+    @tickets.delete(ticket)
+    if not done? && @tickets.empty?
+      @done = true
+      on_success
+    end
+  end
+
+  def on_success
+    @success_callback.call(values)
+  end
+
+  def done?
+    @done == true
+  end
+end
+
+class Donkey::WaiterMap
+  require 'set'
+
+  class RepeatedCheckin < Donkey::Error
+  end
+
+  attr_reader :map
+  def initialize
+    @map = Hash.new { |h,k| h[k] = Set.new }
+  end
+
+  def register(waiter,*keys)
+    keys.each do |key|
+      @map[key] << waiter
+    end
+  end
+
+  # waiter is responsible of unregistering itself
+  def unregister(waiter,*keys)
+    keys.each do |key|
+      waiters = @map[key].delete(waiter)
+      @map.delete(key) if waiters.empty?
+    end
+  end
+
+  def signal(key,value)
+    waiters_of(key).each { |waiter| waiter.signal(key,value) }
+  end
+
+  def waiters_of(key)
+    @map[key]
+  end
+end
+
 class Donkey::Reactor
   def self.process(donkey,header,message)
     self.new(donkey,header,message).process
