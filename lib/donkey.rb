@@ -85,10 +85,6 @@ class Donkey
     private.subscribe
   end
 
-  # NOTE it is a mistake to wait on tag returned
-  # by another object. I could use an object to
-  # represent the receipt of the call... but for
-  # various reasons i decide not to.
   def call(to,data,opts={})
     tag = opts.delete(:tag) || ticketer.next
     public.call(to,data,tag,opts)
