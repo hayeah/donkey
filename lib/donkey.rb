@@ -63,12 +63,13 @@ class Donkey
     end
   end
 
-  attr_reader :id, :name, :channel, :reactor
+  attr_reader :id, :name, :channel, :reactor, :waiter_map
   def initialize(name,reactor,channel=Donkey.channel)
     @id = Donkey::UUID.generate
     @reactor = reactor
     @name = name
     @channel = channel
+    @waiter_map = Donkey::WaiterMap.new
   end
 
   attr_reader :public, :private
@@ -89,6 +90,15 @@ class Donkey
   def reply(header,message,result,opts={})
     # message not used
     private.reply(header.reply_to,header.key,result,header.message_id,opts)
+  end
+  
+  def wait(*keys,&block)
+    Donkey::Waiter.new(waiter_map,*keys,&block)
+  end
+
+  # only Reactor should call this
+  def signal(key,value)
+    waiter_map.signal(key,value)
   end
   
   def process(header,message)

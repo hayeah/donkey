@@ -1,5 +1,10 @@
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
+# def dummy_block(*args)
+#   m = mock!.call(*args).subject
+#   lambda { |*args| m.call(*args) }
+# end
+
 describe "Donkey" do
   it "uses default channel" do
     stub(Donkey).default_channel { "default channel" }
@@ -51,9 +56,12 @@ describe "Donkey" do
     stub(Donkey).default_channel { @channel }
     stub(Donkey::UUID).generate { @uuid = "uuid" }
     @reactor = Object.new
-    @donkey = Donkey.new("name",@reactor)
     @public = Object.new
     @private = Object.new
+    @waiter_map = Object.new
+    stub(Donkey::WaiterMap).new { @waiter_map }
+
+    @donkey = Donkey.new("name",@reactor)
     stub(@donkey).public { @public }
     stub(@donkey).private { @private }
   end
@@ -107,6 +115,17 @@ describe "Donkey" do
 
   it "has reactor" do
     @donkey.reactor.should == @reactor
+  end
+
+  it "waits tickets" do
+    keys = %w(1 2 3)
+    mock(Donkey::Waiter).new(@waiter_map,*keys)
+    @donkey.wait(*keys)
+  end
+
+  it "signals ticket" do
+    mock(@waiter_map).signal("key","value")
+    @donkey.signal("key","value")
   end
 end
 
