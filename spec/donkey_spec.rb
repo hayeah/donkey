@@ -1,10 +1,5 @@
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
-# def dummy_block(*args)
-#   m = mock!.call(*args).subject
-#   lambda { |*args| m.call(*args) }
-# end
-
 describe "Donkey" do
   it "uses default channel" do
     stub(Donkey).default_channel { "default channel" }
@@ -71,6 +66,7 @@ describe "Donkey" do
   it "creates routes" do
     mock(Donkey::Route::Public).declare(@donkey)
     mock(Donkey::Route::Private).declare(@donkey)
+    mock(@private).subscribe
     @donkey.create
   end
 
@@ -107,11 +103,11 @@ describe "Donkey" do
   end
 
   it "replies" do
-    mock(@header).reply_to { "reply_to" }
-    mock(@header).key { "reply_to_id" }
+    reply_to = "reply_name#reply_id"
+    mock(@header).reply_to { reply_to }
     mock(@header).message_id { "tag" }
     opts = { :foo => :bar }
-    mock(@private).reply("reply_to","reply_to_id","result","tag",opts)
+    mock(@private).reply(reply_to,"result","tag",opts)
     @donkey.reply(@header,message=Object.new,"result",opts)
   end
   
@@ -140,7 +136,21 @@ describe "Donkey" do
 
   it "signals ticket" do
     mock(@waiter_map).signal("key","value")
-    @donkey.signal("key","value")
+    @donkey.signal("key","value") 
+  end
+end
+
+describe "Donkey::Receipt" do
+  before do
+    @donkey = Object.new
+    @key = Object.new
+    @receipt = Donkey::Receipt.new(@donkey,@key)
+  end
+
+  it "waits" do
+    mock(@donkey).wait(@receipt).yields
+    m = mock!.call.subject
+    @receipt.wait { m.call }
   end
 end
 
@@ -546,33 +556,6 @@ describe "Donkey::WaiterMap" do
     @map.signal(@key1,1)
     @map.signal(@key2,2)
   end
-
-  
-  
-#   before(:each) do
-#     @ticket1,@ticket2 = ticket, ticket
-#     @waiter = Donkey::Waiter.new(@ticket1,@ticket2)
-#   end
-
-#   it "registers each ticket" do
-#     Donkey::Waiter.registered?(@ticket1).should == true
-#     Donkey::Waiter.registered?(@ticket2).should == true
-#     Donkey::Waiter.registered?(ticket).should == false
-#   end
-
-#   it "tracks pending tickets" do
-#     @waiter.ready?
-#     @waiter.pending.should include(@ticket1,@ticket2)
-#   end
-
-#   it "is not ready until all the tickets are signaled" do
-#     @waiter.ready?.should == false
-#     signal(@ticket1)
-#     @waiter.ready?.should == false
-#     signal(@ticket2)
-#     @waiter.ready?.should == true
-#   end
-  
 end
 
 describe "Donkey::Route" do
@@ -598,7 +581,7 @@ describe "Donkey::Route" do
     it "publishes" do
       mock(msg = Object.new).encode { "payload" }
       opts = { :foo => :bar }
-      mock(@channel).publish("to","payload",opts.merge(:key => ""))
+      mock(@channel).publish("to","payload",opts)
       @public.send(:publish,"to",msg,opts)
     end
 
@@ -606,8 +589,7 @@ describe "Donkey::Route" do
       tag="tag"
       mock(@public).publish("to",is_a(Donkey::Message::Call),
                             { :foo => :bar,
-                              :reply_to => @donkey.name,
-                              :key => @donkey.id,
+                              :reply_to => "#{@donkey.name}##{@donkey.id}",
                               :message_id => tag})
       @public.call("to","data",tag,:foo => :bar)
     end
@@ -660,8 +642,8 @@ describe "Donkey::Route" do
       data="data"
       mock(Donkey::Message::Back).new("data") { "back-message" }
       mock(@private).publish("to","back-message",
-                             {:foo => :bar, :key => "id", :message_id => "tag"})
-      @private.reply("to","id","data","tag",{ :foo => :bar })
+                             {:foo => :bar, :routing_key => "id", :message_id => "tag"})
+      @private.reply("to#id","data","tag",{ :foo => :bar })
     end
   end
 end

@@ -20,6 +20,8 @@ class Donkey
     # previously created objects useless. So for
     # example Donkey.default_channel caches a
     # default channel. That would break.
+    #
+    # FIXME uhhhhhh... this could be called from with eventmachine thread when reactor dies
     def stop
       if EM.reactor_running?
         # wait for EventMachine cleanup
@@ -35,7 +37,7 @@ class Donkey
     end
 
     attr_accessor :default_settings
-    Donkey.default_settings = AMQP.settings
+    Donkey.default_settings = AMQP.settings.merge(:logging => ENV["trace"])
 
     # create donkey objects with a channel
     def with(arg)
@@ -80,6 +82,7 @@ class Donkey
   def create
     @public  = Route::Public.declare(self)
     @private = Route::Private.declare(self)
+    private.subscribe
   end
 
   # NOTE it is a mistake to wait on tag returned
@@ -99,7 +102,10 @@ class Donkey
   # only Reactor should call this (by magic...)
   def reply(header,message,result,opts={})
     # message not used
-    private.reply(header.reply_to,header.key,result,header.message_id,opts)
+    private.reply(header.reply_to,
+                  result,
+                  header.message_id,
+                  opts)
   end
   
   def wait(*receipts,&block)
@@ -124,6 +130,9 @@ class Donkey
 end
 
 class Donkey::Receipt < Struct.new(:donkey,:key)
+  def wait(&block)
+    donkey.wait(self,&block)
+  end
 end
 
 class Donkey::Ticketer
@@ -218,9 +227,11 @@ class Donkey::Waiter
   def complete(status,&block)
     return if done?
     @status = status
-    block.call
     @waiter_map.unregister(self,*@keys)
     timer.cancel if timer
+    # NB to avoid timing issues, better to clean
+    # up, then to call the success callback
+    block.call
   end
   
   def status=(status)
@@ -481,9 +492,11 @@ class Donkey::Route
   def channel
     donkey.channel
   end
-  
+
+  attr_reader :exchange, :queue
   def declare
     raise "abstract"
+    # must set @exchange and @queue
   end
 
   # gets one message delivered
@@ -502,7 +515,7 @@ class Donkey::Route
   protected
 
   def publish(to,message,opts={})
-    channel.publish(to,message.encode,opts.merge(:key => ""))
+    channel.publish(to,message.encode,opts)
     message
   end
   
@@ -518,13 +531,16 @@ class Donkey::Route
     end
 
     def call(to,data,tag,opts={})
-      publish(to,Donkey::Message::Call.new(data),opts.merge(:reply_to => donkey.name,
-                                                            :key => donkey.id,
-                                                            :message_id => tag.to_s))
+      publish(to,
+              Donkey::Message::Call.new(data),
+              opts.merge(:reply_to => "#{donkey.name}##{donkey.id}",
+                         :message_id => tag.to_s))
     end
 
     def cast(to,data,opts={})
-      publish(to,Donkey::Message::Cast.new(data),opts)
+      publish(to,
+              Donkey::Message::Cast.new(data),
+              opts)
     end
   end
 
@@ -535,10 +551,14 @@ class Donkey::Route
       @queue = channel.queue(@id,:auto_delete => true).bind(donkey.name,:key => @id)
     end
 
-    def reply(to,id,data,tag,opts={})
-      publish(to,Donkey::Message::Back.new(data),
+    def reply(reply_to,data,tag,opts={})
+      reply_to.match(/^(.+)#(.+)$/)
+      donkey_name = $1
+      donkey_id = $2
+      publish(donkey_name,
+              Donkey::Message::Back.new(data),
               opts.merge({ :message_id => tag.to_s,
-                           :key => id}))
+                           :routing_key => donkey_id}))
     end
   end
 end

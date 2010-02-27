@@ -28,42 +28,10 @@ describe "Donkey" do
 
   include RabbitHelper
 
-  class TestReactor < Donkey::Reactor
-    class Data < Struct.new(:donkey,:header,:message)
-    end
-
-    class Timeout < RuntimeError
-    end
-
-    def initialize
-      @queue = Queue.new
-    end
-    
-    def process(donkey,header,message)
-      @queue << Data.new(donkey,header,message)
-      true
-    end
-
-    def pop(timeout=3)
-      timer = EM::Timer.new(timeout) do
-        @queue << Timeout.new
-      end
-      
-      case r=@queue.pop
-      when Data
-        timer.cancel
-        r
-      when Timeout
-        raise r
-      end
-    end
-    
-  end
-
   before(:each) do
     Donkey.stop
     Donkey::Rabbit.restart
-    @reactor = TestReactor.new
+    @reactor = Object.new
     @donkey = Donkey.new("test",@reactor)
     @donkey.create
   end
@@ -101,51 +69,67 @@ describe "Donkey" do
     (q = find_queue(@donkey.id)).should_not be_nil
     q["auto_delete"].should == true
   end
+end
 
-  it "calls" do
-    @donkey.call(@donkey.name,10)
-    q = find_queue(@donkey.name)
-    q.should_not be_nil
-    q["messages"].should == 1
+
+context "messages" do
+  class TestReactor < Donkey::Reactor
+  end
+  before(:each) do
+    Donkey.stop
+    Donkey::Rabbit.restart
+    @donkey = Donkey.new("test",TestReactor)
+    @donkey.create
+    @q = Queue.new
   end
 
-  it "calls itself" do
-    future = @donkey.call(@donkey.name,10)
-    future.should be_a(Donkey::Future)
-    q = find_queue(@donkey.name)
-    q["messages"].should == 1
-    @donkey.pop
-    future.wait.should == 10
-    q = find_queue(@donkey.name)
-    q["messages"].should == 0
+  def react(method,&block)
+    TestReactor.class_eval do
+      define_method(method,&block)
+    end
   end
 
-  it "casts" do
-    @donkey.cast(@donkey.name,10)
-    q = find_queue(@donkey.name)
-    q.should_not be_nil
-    q["messages"].should == 1
-  end
+  it "pops"
 
-  it "pops one message" do
-    @donkey.cast(@donkey.name,data="data1")
-    @donkey.cast(@donkey.name,data="data2")
-    # pop first message
+  it "pops with ack"
+  
+  it "casts to itself" do
+    @donkey.cast(@donkey.name,:input)
+    q = Queue.new
+    react(:on_cast) {
+      q << message.data
+    }
     @donkey.pop
-    r = @reactor.pop
-    r.header.should be_a(MQ::Header)
-    r.message.should be_a(Donkey::Message::Cast)
-    r.message.data.should == "data1"
-    find_queue(@donkey.name)["messages"].should == 1
-    # pop second message
-    @donkey.pop
-    r = @reactor.pop
-    r.message.data.should == "data2"
-    find_queue(@donkey.name)["messages"].should == 0
+    q.pop.should == :input
   end
   
-  # it "pops with ack" do
-#     pending
-#   end
+  it "calls itself" do
+    receipt = @donkey.call(@donkey.name,:input)
+    q = Queue.new
+    react(:on_call) {
+      q << self
+      reply(:output)
+    }
+    # @donkey.wait(receipt) { |output| q << output }
+    waiter = receipt.wait { |output| q << output }
+    waiter.should be_a(Donkey::Waiter)
+    waiter.pending.should have(1).key
+    waiter.pending.should include(receipt.key)
+    
+    @donkey.pop
+    reactor = q.pop
+    msg = reactor.message
+    msg.should be_a(Donkey::Message::Call)
+    msg.data.should == :input
+    reactor.header.message_id.should == receipt.key
 
+    q.pop.should == :output
+    waiter.done?.should == true
+    waiter.success?.should == true
+    waiter.pending.should be_empty
+    waiter.value(receipt.key).should == :output
+
+    # waiter_map should not keep references to completed waiters
+    @donkey.waiter_map.map.should be_empty
+  end
 end
