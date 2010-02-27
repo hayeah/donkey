@@ -145,6 +145,12 @@ describe "Donkey::Reactor" do
     @reactor = Donkey::Reactor.new(@donkey,@header,@message)
   end
 
+  def back
+    stub(@header).message_id { "message_id" }
+    @message = Donkey::Message::Back.new("data")
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message)
+  end
+
   it "processes" do
     mock(Donkey::Reactor).new(donkey="donkey",header="header",message="message") { mock!.process.subject }
     Donkey::Reactor.process(donkey,header,message)
@@ -173,16 +179,21 @@ describe "Donkey::Reactor" do
   end
   
   context "#process" do
-    it "reacts to call" do
+    it "processes Call" do
       call
-      mock(@reactor).on_call { "result" }
-      mock(@reactor).reply("result")
+      mock(@reactor).on_call
       @reactor.process
     end
 
-    it "reacts to cast" do
+    it "processes Cast" do
       cast
       mock(@reactor).on_cast
+      @reactor.process
+    end
+
+    it "processes Back" do
+      back
+      mock(@donkey).signal(@header.message_id,@message.data)
       @reactor.process
     end
 

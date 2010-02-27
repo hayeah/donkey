@@ -293,10 +293,11 @@ class Donkey::Reactor
     begin
       case message
       when Donkey::Message::Call
-        result = on_call
-        reply(result) unless replied?
+        on_call
       when Donkey::Message::Cast
         on_cast
+      when Donkey::Message::Back
+        donkey.signal(header.message_id,message.data)
       end
     rescue => error
       begin
