@@ -11,6 +11,9 @@ class Donkey
 
   class Error < RuntimeError
   end
+
+  class BadReceipt < Error
+  end
   
   class << self
     # FIXME hmmm... this would render all the
@@ -63,13 +66,14 @@ class Donkey
     end
   end
 
-  attr_reader :id, :name, :channel, :reactor, :waiter_map
+  attr_reader :id, :name, :channel, :reactor, :waiter_map, :ticketer
   def initialize(name,reactor,channel=Donkey.channel)
     @id = Donkey::UUID.generate
     @reactor = reactor
     @name = name
     @channel = channel
     @waiter_map = Donkey::WaiterMap.new
+    @ticketer = Donkey::Ticketer.new
   end
 
   attr_reader :public, :private
@@ -78,12 +82,18 @@ class Donkey
     @private = Route::Private.declare(self)
   end
 
-  def call(to,data,meta={})
-    public.call(to,data,meta)
+  # NOTE it is a mistake to wait on tag returned
+  # by another object. I could use an object to
+  # represent the receipt of the call... but for
+  # various reasons i decide not to.
+  def call(to,data,opts={})
+    tag = opts.delete(:tag) || ticketer.next
+    public.call(to,data,tag,opts)
+    Donkey::Receipt.new(self,tag)
   end
 
-  def cast(to,data,meta={})
-    public.cast(to,data,meta)
+  def cast(to,data,opts={})
+    public.cast(to,data,opts)
   end
 
   # only Reactor should call this (by magic...)
@@ -92,7 +102,9 @@ class Donkey
     private.reply(header.reply_to,header.key,result,header.message_id,opts)
   end
   
-  def wait(*keys,&block)
+  def wait(*receipts,&block)
+    raise BadReceipt if receipts.any? { |receipt| receipt.donkey != self }
+    keys = receipts.map(&:key)
     Donkey::Waiter.new(waiter_map,*keys,&block)
   end
 
@@ -111,34 +123,19 @@ class Donkey
   end
 end
 
-class Donkey::Ticket < Struct.new(:value)
-  class Expired < Donkey::Error
+class Donkey::Receipt < Struct.new(:donkey,:key)
+end
+
+class Donkey::Ticketer
+  # TODO synchronize?
+  def initialize
+    # @mutex = Mutex.new
+    @counter = 0
   end
   
-  def self.next
-    (@mutex ||= Mutex.new).synchronize {
-      @counter ||= 0
-      @counter += 1
-    }
-    self.new(@counter.to_s)
-  end
-
-  def initialize(v)
-    @value = v.to_s
-    @taken = false
-  end
-  
-  def value
-    @value
-  end
-
-  def take!
-    @taken = true
-    self
-  end
-
-  def taken?
-    @taken == true
+  def next
+    @counter += 1
+    @counter.to_s
   end
 end
 

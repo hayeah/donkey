@@ -59,7 +59,9 @@ describe "Donkey" do
     @public = Object.new
     @private = Object.new
     @waiter_map = Object.new
+    @ticketer = Object.new
     stub(Donkey::WaiterMap).new { @waiter_map }
+    stub(Donkey::Ticketer).new { @ticketer }
 
     @donkey = Donkey.new("name",@reactor)
     stub(@donkey).public { @public }
@@ -80,12 +82,17 @@ describe "Donkey" do
     @donkey.name.should == "name"
   end
   
-  it "calls" do
-    pending
-    mock(@public).call(*args = ["to","data",{"foo" => "bar"}])
-    @donkey.call(*args)
+  it "calls without a tag" do
+    mock(@ticketer).next { "next-ticket" }
+    mock(@public).call("to","data","next-ticket",{:foo => :bar})
+    @donkey.call("to","data",{:foo => :bar}).should == Donkey::Receipt.new(@donkey,"next-ticket")
   end
 
+  it "calls with a tag" do
+    mock(@public).call("to","data","tag",{:foo => :bar})
+    @donkey.call("to","data",{:tag => "tag", :foo => :bar}).should == Donkey::Receipt.new(@donkey,"tag")
+  end
+  
   it "calls and returns future" do
     pending
     mock(@public).call(*args = ["to","data"])
@@ -117,10 +124,18 @@ describe "Donkey" do
     @donkey.reactor.should == @reactor
   end
 
-  it "waits tickets" do
+  it "waits receipts" do
     keys = %w(1 2 3)
+    receipts = keys.map {|key|
+      Donkey::Receipt.new(@donkey,key)
+    }
     mock(Donkey::Waiter).new(@waiter_map,*keys)
-    @donkey.wait(*keys)
+    @donkey.wait(*receipts)
+  end
+
+  it "raises if attempting to wait for receipt from another donkey" do
+    receipt = Donkey::Receipt.new(Object.new,"key")
+    lambda { @donkey.wait(receipt) }.should raise_error(Donkey::BadReceipt)
   end
 
   it "signals ticket" do
@@ -228,28 +243,15 @@ describe "Donkey::Reactor" do
   end
 end
 
-describe "Donkey::Ticket" do
-  require 'set'
-  def ticket
-    Donkey::Ticket.next
+describe "Donkey::Ticketer" do
+  before do
+    @ticketer = Donkey::Ticketer.new
   end
   
   it "produces a unique ticket" do
     # well... kinda lame way to test it.
-    Set.new(10.times.map { ticket.value }).should have(10).tickets
+    Set.new(10.times.map { @ticketer.next }).should have(10).tickets
   end
-
-  it "retrieves value" do
-    ticket.value.should be_a(String)
-  end
-
-  it "checks if taken" do
-    t = ticket
-    t.taken?.should == false
-    t.take!
-    t.taken?.should == true
-  end
-  
 end
 
 describe "Donkey::Waiter" do

@@ -110,7 +110,7 @@ describe "Donkey" do
   end
 
   it "calls itself" do
-    future = @donkey.call!(@donkey.name,10)
+    future = @donkey.call(@donkey.name,10)
     future.should be_a(Donkey::Future)
     q = find_queue(@donkey.name)
     q["messages"].should == 1
@@ -143,7 +143,7 @@ describe "Donkey" do
     r.message.data.should == "data2"
     find_queue(@donkey.name)["messages"].should == 0
   end
-
+  
   # it "pops with ack" do
 #     pending
 #   end
