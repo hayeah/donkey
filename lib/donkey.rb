@@ -14,6 +14,12 @@ class Donkey
 
   class BadReceipt < Error
   end
+
+  class AlreadySubscribed < Error
+  end
+
+  class NotSubscribed < Error
+  end
   
   class << self
     # FIXME hmmm... this would render all the
@@ -121,7 +127,24 @@ class Donkey
   end
 
   def pop(opts={})
+    raise Donkey::AlreadySubscribed if subscribed?
     public.pop(opts)
+  end
+
+  def subscribe(opts={})
+    raise Donkey::AlreadySubscribed if subscribed?
+    public.subscribe(opts)
+    @subscribed = true
+  end
+
+  def unsubscribe(opts={})
+    raise Donkey::NotSubscribed if not subscribed?
+    public.unsubscribe
+    @subscribed = false
+  end
+
+  def subscribed?
+    @subscribed == true
   end
 end
 
@@ -507,6 +530,10 @@ class Donkey::Route
     queue.subscribe(opts) do |header,payload|
       process(header,payload)
     end
+  end
+
+  def unsubscribe(opts={})
+    queue.unsubscribe(opts)
   end
 
   protected

@@ -1,5 +1,9 @@
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
+def dummy_opts
+  { :foo => :bar }
+end
+
 describe "Donkey" do
   it "uses default channel" do
     stub(Donkey).default_channel { "default channel" }
@@ -137,6 +141,40 @@ describe "Donkey" do
   it "signals ticket" do
     mock(@waiter_map).signal("key","value")
     @donkey.signal("key","value") 
+  end
+  
+  context "#subscribe" do
+    before do
+      stub(@donkey.public).subscribe
+      stub(@donkey.public).unsubscribe
+    end
+    
+    it "cannot pop if already subscribed" do
+      @donkey.subscribe
+      lambda { @donkey.pop }.should raise_error(Donkey::AlreadySubscribed)
+    end
+
+    it "cannot subscribe if already subscribed" do
+      @donkey.subscribe
+      lambda { @donkey.subscribe }.should raise_error(Donkey::AlreadySubscribed)
+    end
+    
+    it "subscribes" do
+      mock(@donkey.public).subscribe(dummy_opts)
+      @donkey.subscribe(dummy_opts)
+      @donkey.subscribed?.should be_true
+    end
+
+    it "unsubscribes" do
+      @donkey.subscribe
+      @donkey.subscribed?.should be_true
+      @donkey.unsubscribe
+      @donkey.subscribed?.should be_false
+    end
+
+    it "cannot unsubscribe if not subscribed" do
+      lambda { @donkey.unsubscribe }.should raise_error(Donkey::NotSubscribed)
+    end
   end
 end
 
@@ -570,6 +608,35 @@ describe "Donkey::Route" do
     @donkey = Donkey.new("name",@reactor=Object.new,@channel)
   end
 
+  context "Route" do
+    before(:each) do
+      @exchange = Object.new
+      @queue = Object.new
+      @route = Donkey::Route.new(@donkey)
+      stub(@route).queue { @queue }
+      stub(@route).exchange { @exchange }
+      @header = Object.new
+      @payload = Object.new
+    end
+
+    it "subscribes" do
+      mock(@queue).subscribe(dummy_opts).yields(@header,@payload)
+      mock(@route).process(@header,@payload)
+      @route.subscribe(dummy_opts)
+    end
+
+    it "unsubscribes" do
+      mock(@queue).unsubscribe(dummy_opts)
+      @route.unsubscribe(dummy_opts)
+    end
+
+    it "pops a message" do
+      mock(@queue).pop(dummy_opts).yields(@header,@payload)
+      mock(@route).process(@header,@payload)
+      @route.pop(dummy_opts)
+    end
+  end
+
   context "Public" do
     before(:each) do
       @exchange = Object.new
@@ -603,25 +670,6 @@ describe "Donkey::Route" do
     it "casts" do
       mock(@public).publish("to",is_a(Donkey::Message::Cast),:foo => :bar)
       @public.cast("to","data",:foo => :bar)
-    end
-
-    it "pops a message" do
-      header = "header"
-      payload = "payload"
-      queue = Object.new
-      class << queue
-        attr_reader :captured_block
-        def pop(opts,&block)
-          @captured_block = block
-        end
-      end
-      # mock the object we are testing to return the queue double
-      mock(@public).queue { queue }
-      mock(@public).process(header,payload)
-      
-      @public.pop
-      # test the call back
-      queue.captured_block.call(header,payload)
     end
 
     it "processes" do

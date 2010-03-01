@@ -83,7 +83,6 @@ context "messages" do
   before(:each) do
     Donkey.stop
     Donkey::Rabbit.restart
-    TestReactor.reset
     @donkey = Donkey.new("test",TestReactor)
     @donkey.create
     @q = Queue.new
@@ -163,5 +162,19 @@ context "messages" do
     }
     2.times { @donkey.pop }
     q.pop.should == [1,2]
+  end
+
+  it "subscribes" do
+    @donkey.subscribe
+    react(:on_call) {
+      reply(message.data)
+    }
+    rs = 10.times.map { |i| call(i) }
+    q = Queue.new
+    waiter = @donkey.wait(*rs) { |*vs|
+      q << vs
+    }
+    q.pop.should == (0..9).to_a
+    waiter.received.should have(10).values
   end
 end
