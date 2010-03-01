@@ -399,10 +399,16 @@ describe "Donkey::Waiter" do
       lambda { set_timeout }.should raise_error(Donkey::Waiter::TimeoutAlreadySet)
     end
 
+    it "returns waiter instance" do
+      set_timeout.should == @waiter
+    end
+
     it "sets timeout timer" do
+      a_timer = Object.new
       mock(@waiter).on_timeout
-      mock(EM).add_timer(@timeout).yields
+      mock(EM::Timer).new(@timeout) { a_timer }.yields
       set_timeout
+      @waiter.timer.should == a_timer
     end
     
     it "sets timeout callback" do

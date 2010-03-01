@@ -170,8 +170,9 @@ class Donkey::Waiter
   attr_reader :timeout_callback, :timer
   def timeout(time,&block)
     raise TimeoutAlreadySet,self if @timer
-    @timer = EM.add_timer(time) {on_timeout}
+    @timer = EM::Timer.new(time) {on_timeout}
     @timeout_callback = block
+    self
   end
 
   def ready?

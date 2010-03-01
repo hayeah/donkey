@@ -73,11 +73,17 @@ end
 
 
 context "messages" do
+  def call(data)
+    @donkey.call(@donkey.name,data)
+  end
+  
   class TestReactor < Donkey::Reactor
   end
+  
   before(:each) do
     Donkey.stop
     Donkey::Rabbit.restart
+    TestReactor.reset
     @donkey = Donkey.new("test",TestReactor)
     @donkey.create
     @q = Queue.new
@@ -131,5 +137,31 @@ context "messages" do
 
     # waiter_map should not keep references to completed waiters
     @donkey.waiter_map.map.should be_empty
+  end
+
+  it "times out" do
+    receipt = @donkey.call(@donkey.name,:timeout)
+    q = Queue.new
+    waiter = receipt.wait { |r|
+      # do nothing
+    }.timeout(0.5) {
+      q << :timeout
+    }
+    q.pop.should == :timeout
+    waiter.timeout?.should == true
+  end
+  
+  it "waits multiple receipts" do
+    r1 = call(1)
+    r2 = call(2)
+    q = Queue.new
+    react(:on_call) {
+      reply(message.data)
+    }
+    @donkey.wait(r1,r2) { |v1,v2|
+      q << [v1,v2]
+    }
+    2.times { @donkey.pop }
+    q.pop.should == [1,2]
   end
 end
