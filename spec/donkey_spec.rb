@@ -114,10 +114,15 @@ describe "Donkey" do
     mock(@private).reply(reply_to,"result","tag",opts)
     @donkey.reply(@header,message=Object.new,"result",opts)
   end
+
+  it "acks" do
+    mock(@header).ack
+    @donkey.ack(@header)
+  end
   
   it "processes message" do
-    mock(@reactor).process(@donkey,header="header",message="message")
-    @donkey.process(header,message)
+    mock(@reactor).process(@donkey,header="header",message="message",ack="ack")
+    @donkey.process(header,message,ack)
   end
 
   it "has reactor" do
@@ -198,25 +203,48 @@ describe "Donkey::Reactor" do
     @donkey = Object.new
   end
 
-  def call
+  def call(ack=false)
     @message = Donkey::Message::Call.new("data")
-    @reactor = Donkey::Reactor.new(@donkey,@header,@message)
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
   end
 
-  def cast
+  def cast(ack=false)
     @message = Donkey::Message::Cast.new("data")
-    @reactor = Donkey::Reactor.new(@donkey,@header,@message)
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
   end
 
-  def back
+  def back(ack=false)
     stub(@header).message_id { "message_id" }
     @message = Donkey::Message::Back.new("data")
-    @reactor = Donkey::Reactor.new(@donkey,@header,@message)
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
   end
 
   it "processes" do
-    mock(Donkey::Reactor).new(donkey="donkey",header="header",message="message") { mock!.process.subject }
-    Donkey::Reactor.process(donkey,header,message)
+    mock(Donkey::Reactor).new(donkey="donkey",header="header",message="message",ack=true) {
+      mock!.process.subject
+    }
+    Donkey::Reactor.process(donkey,header,message,ack)
+  end
+
+  it "needs ack" do
+    call(ack=true)
+    @reactor.ack?.should be_true
+  end
+
+  it "doesn't need ack" do
+    call(ack=false)
+    @reactor.ack?.should be_false
+  end
+
+  it "acks" do
+    mock(@donkey).ack(@header)
+    call(ack=true)
+    @reactor.ack
+  end
+
+  it "raises if no need to ack" do
+    call(ack=false)
+    lambda { @reactor.ack }.should raise_error(Donkey::Reactor::NoAckNeeded)
   end
 
   context "#reply" do
@@ -619,10 +647,20 @@ describe "Donkey::Route" do
       @payload = Object.new
     end
 
+    def ack_opts
+      dummy_opts.merge(:ack => true)
+    end
+
     it "subscribes" do
       mock(@queue).subscribe(dummy_opts).yields(@header,@payload)
-      mock(@route).process(@header,@payload)
+      mock(@route).process(@header,@payload,false)
       @route.subscribe(dummy_opts)
+    end
+
+    it "subscribes with ack" do
+      mock(@queue).subscribe(ack_opts).yields(@header,@payload)
+      mock(@route).process(@header,@payload,true)
+      @route.subscribe(ack_opts)
     end
 
     it "unsubscribes" do
@@ -632,8 +670,14 @@ describe "Donkey::Route" do
 
     it "pops a message" do
       mock(@queue).pop(dummy_opts).yields(@header,@payload)
-      mock(@route).process(@header,@payload)
+      mock(@route).process(@header,@payload,false)
       @route.pop(dummy_opts)
+    end
+
+    it "pops a message with ack" do
+      mock(@queue).pop(ack_opts).yields(@header,@payload)
+      mock(@route).process(@header,@payload,true)
+      @route.pop(ack_opts)
     end
   end
 
@@ -674,8 +718,8 @@ describe "Donkey::Route" do
 
     it "processes" do
       mock(Donkey::Message).decode("payload") { "message" }
-      mock(@donkey).process("header","message")
-      @public.send(:process,"header","payload")
+      mock(@donkey).process("header","message","ack")
+      @public.send(:process,"header","payload","ack")
     end
   end
 

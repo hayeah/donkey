@@ -73,8 +73,24 @@ end
 
 
 context "messages" do
-  def call(data)
-    @donkey.call(@donkey.name,data)
+  include RabbitHelper
+
+  def call(data,opts={})
+    @donkey.call(@donkey.name,data,opts)
+  end
+
+  def cast(data,opts={})
+    @donkey.cast(@donkey.name,data,opts)
+  end
+
+  def react(method,&block)
+    TestReactor.class_eval do
+      define_method(method,&block)
+    end
+  end
+
+  def count
+    find_queue(@donkey.name)["messages"]
   end
   
   class TestReactor < Donkey::Reactor
@@ -88,15 +104,50 @@ context "messages" do
     @q = Queue.new
   end
 
-  def react(method,&block)
-    TestReactor.class_eval do
-      define_method(method,&block)
-    end
+  
+  it "pops empty queue" do
+    # seems to cause a nil to be received.
+    ## from mq.rb
+    # when Protocol::Basic::GetEmpty
+#         if @consumer = get_queue{|q| q.shift }
+#           @consumer.receive nil, nil
+#         else
+#           MQ.error "Basic.GetEmpty for invalid consumer"
+#         end
+    @donkey.pop
+    sleep(1)
   end
 
-  it "pops"
-
-  it "pops with ack"
+  it "pops" do
+    cast(1)
+    q = Queue.new
+    react(:on_cast) {
+      q << self
+    }
+    count.should == 1
+    @donkey.pop
+    reactor = q.pop
+    find_queue(@donkey.name)["messages"].should == 0
+    reactor.ack?.should be_false
+    reactor.message.data.should == 1
+  end
+  
+  it "pops with ack" do
+    cast(1)
+    q = Queue.new
+    react(:on_cast) {
+      q << self
+    }
+    find_queue(@donkey.name)["messages"].should == 1
+    @donkey.pop(:ack => true)
+    reactor = q.pop
+    reactor.ack?.should be_true
+    #  not yet acked, so message in queue count should still be 1
+    find_queue(@donkey.name)["messages"].should == 1
+    reactor.ack
+    sleep(1) # no other way to do this...
+    find_queue(@donkey.name)["messages"].should == 0
+  end
   
   it "casts to itself" do
     @donkey.cast(@donkey.name,:input)
@@ -165,16 +216,37 @@ context "messages" do
   end
 
   it "subscribes" do
-    @donkey.subscribe
-    react(:on_call) {
-      reply(message.data)
-    }
-    rs = 10.times.map { |i| call(i) }
     q = Queue.new
-    waiter = @donkey.wait(*rs) { |*vs|
-      q << vs
+    react(:on_cast) {
+      q << self
     }
-    q.pop.should == (0..9).to_a
-    waiter.received.should have(10).values
+    rs = 10.times.map { |i| cast(i) }
+    sleep(1)
+    count.should == 10
+    
+    @donkey.subscribe
+    reactors = 10.times.map { q.pop }
+    count.should == 0
+    reactors.each { |reactor|
+      reactor.ack?.should == false
+    }
+    reactors.map { |r| r.message.data }.should == (0..9).to_a
+  end
+
+  it "subscribes with ack" do
+    @donkey.subscribe(:ack => true)
+    q = Queue.new
+    react(:on_cast) {
+      q << self
+    }
+    rs = 10.times.map { |i| cast(i) }
+    reactors = 10.times.map { q.pop }
+    count.should == 10
+    reactors.each { |reactor|
+      reactor.ack?.should == true
+    }
+    reactors.each(&:ack)
+    sleep(1)
+    count.should == 0
   end
 end

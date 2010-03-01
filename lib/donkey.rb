@@ -109,6 +109,10 @@ class Donkey
                   header.message_id,
                   opts)
   end
+
+  def ack(header)
+    header.ack
+  end
   
   def wait(*receipts,&block)
     raise BadReceipt if receipts.any? { |receipt| receipt.donkey != self }
@@ -120,10 +124,10 @@ class Donkey
   def signal(key,value)
     waiter_map.signal(key,value)
   end
-  
-  def process(header,message)
-    # TODO should use EM.defer
-    @reactor.process(self,header,message)
+
+  # only Reactor should call this
+  def process(header,message,ack)
+    @reactor.process(self,header,message,ack)
   end
 
   def pop(opts={})
@@ -306,15 +310,23 @@ class Donkey::WaiterMap
 end
 
 class Donkey::Reactor
-  def self.process(donkey,header,message)
-    self.new(donkey,header,message).process
+  class NoAckNeeded < Donkey::Error
+  end
+  
+  def self.process(donkey,header,message,ack)
+    self.new(donkey,header,message,ack).process
   end
 
-  attr_reader :donkey, :header, :message
-  def initialize(donkey,header,message)
+  attr_reader :donkey, :header, :message, :ack
+  def initialize(donkey,header,message,ack)
     @donkey = donkey
     @header = header
     @message = message
+    @ack = ack
+  end
+
+  def ack?
+    @ack == true
   end
   
   def process
@@ -348,6 +360,11 @@ class Donkey::Reactor
     raise Donkey::Error, "can only reply once" if @replied
     @replied = true
     donkey.reply(header,message,result,opts)
+  end
+
+  def ack
+    raise NoAckNeeded unless ack?
+    donkey.ack(header)
   end
 
   def replied?
@@ -462,7 +479,7 @@ class Donkey::Message
       tag, data = BERT.decode(payload)
       tag_to_class(tag).new(data)
     rescue
-      raise DecodeError
+      raise DecodeError, payload
     end
   end
 
@@ -521,14 +538,16 @@ class Donkey::Route
 
   # gets one message delivered
   def pop(opts={})
+    ack = (opts[:ack] == true)
     queue.pop(opts) do |header,payload|
-      process(header,payload)
+      process(header,payload,ack)
     end
   end
   
   def subscribe(opts={})
+    ack = (opts[:ack] == true)
     queue.subscribe(opts) do |header,payload|
-      process(header,payload)
+      process(header,payload,ack)
     end
   end
 
@@ -543,8 +562,8 @@ class Donkey::Route
     message
   end
   
-  def process(header,payload)
-    donkey.process(header,Donkey::Message.decode(payload))
+  def process(header,payload,ack)
+    donkey.process(header,Donkey::Message.decode(payload),ack)
   end
   
   class Public < self
