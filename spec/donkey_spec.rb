@@ -147,6 +147,12 @@ describe "Donkey" do
     mock(@waiter_map).signal("key","value")
     @donkey.signal("key","value") 
   end
+
+  it "pops with block" do
+    block = mock!.entered.subject
+    mock(@public).pop(dummy_opts).yields
+    @donkey.pop(dummy_opts) { block.entered }
+  end
   
   context "#subscribe" do
     before do
@@ -678,6 +684,13 @@ describe "Donkey::Route" do
       mock(@queue).pop(ack_opts).yields(@header,@payload)
       mock(@route).process(@header,@payload,true)
       @route.pop(ack_opts)
+    end
+
+    it "handles empty queue when popping" do
+      mock(@queue).pop(dummy_opts).yields(nil,nil)
+      dont_allow(@route).process
+      block = mock!.entered.subject
+      @route.pop(dummy_opts) { block.entered  }
     end
   end
 

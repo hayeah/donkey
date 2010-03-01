@@ -104,18 +104,10 @@ context "messages" do
     @q = Queue.new
   end
 
-  
   it "pops empty queue" do
-    # seems to cause a nil to be received.
-    ## from mq.rb
-    # when Protocol::Basic::GetEmpty
-#         if @consumer = get_queue{|q| q.shift }
-#           @consumer.receive nil, nil
-#         else
-#           MQ.error "Basic.GetEmpty for invalid consumer"
-#         end
-    @donkey.pop
-    sleep(1)
+    q = Queue.new
+    @donkey.pop { q << :empty }
+    q.pop.should == :empty
   end
 
   it "pops" do
@@ -127,7 +119,7 @@ context "messages" do
     count.should == 1
     @donkey.pop
     reactor = q.pop
-    find_queue(@donkey.name)["messages"].should == 0
+    count.should == 0
     reactor.ack?.should be_false
     reactor.message.data.should == 1
   end
@@ -138,15 +130,15 @@ context "messages" do
     react(:on_cast) {
       q << self
     }
-    find_queue(@donkey.name)["messages"].should == 1
+    count.should == 1
     @donkey.pop(:ack => true)
     reactor = q.pop
     reactor.ack?.should be_true
     #  not yet acked, so message in queue count should still be 1
-    find_queue(@donkey.name)["messages"].should == 1
+    count.should == 1
     reactor.ack
-    sleep(1) # no other way to do this...
-    find_queue(@donkey.name)["messages"].should == 0
+    sleep(1)
+    count.should == 0
   end
   
   it "casts to itself" do

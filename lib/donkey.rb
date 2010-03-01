@@ -130,9 +130,9 @@ class Donkey
     @reactor.process(self,header,message,ack)
   end
 
-  def pop(opts={})
+  def pop(opts={},&on_empty)
     raise Donkey::AlreadySubscribed if subscribed?
-    public.pop(opts)
+    public.pop(opts,&on_empty)
   end
 
   def subscribe(opts={})
@@ -536,11 +536,19 @@ class Donkey::Route
     # must set @exchange and @queue
   end
 
-  # gets one message delivered
-  def pop(opts={})
+  #gets one message delivered
+  def pop(opts={},&on_empty)
     ack = (opts[:ack] == true)
     queue.pop(opts) do |header,payload|
-      process(header,payload,ack)
+      # NB: when the queue is empty, header is an
+      # MQ::Header that prints "nil". very
+      # confusing. payload is just a regular nil.
+      if payload.nil?
+        # this happens when the queue is empty
+        on_empty.call if on_empty
+      else
+        process(header,payload,ack)
+      end
     end
   end
   
