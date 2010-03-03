@@ -18,7 +18,11 @@ class Donkey
   class NotSubscribed < Error
   end
 
-  %w(uuid rabbit channel message reactor route waiter waiter_map).each { |file|
+  %w(uuid rabbit
+channel route
+receipt ticketer
+message reactor
+waiter waiter_map).each { |file|
     require "donkey/#{file}"
   }
   
@@ -171,25 +175,6 @@ class Donkey
       @default_channel ||= Donkey::Channel.open(Donkey.default_settings)
       @default_channel
     end
-  end
-end
-
-class Donkey::Receipt < Struct.new(:donkey,:key)
-  def wait(&block)
-    donkey.wait(self,&block)
-  end
-end
-
-class Donkey::Ticketer
-  # TODO synchronize?
-  def initialize
-    # @mutex = Mutex.new
-    @counter = 0
-  end
-  
-  def next
-    @counter += 1
-    @counter.to_s
   end
 end
 

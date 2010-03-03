@@ -26,3 +26,7 @@ class Object
     self
   end
 end
+
+def dummy_opts
+  { :foo => :bar }
+end
