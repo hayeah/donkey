@@ -54,6 +54,7 @@ describe "Donkey" do
     @public = Object.new
     @private = Object.new
     @topic = Object.new
+    @fanout = Object.new
     @signal_map = Object.new
     @ticketer = Object.new
     stub(Donkey::SignalMap).new { @signal_map }
@@ -63,6 +64,7 @@ describe "Donkey" do
     stub(@donkey).public { @public }
     stub(@donkey).private { @private }
     stub(@donkey).topic { @topic }
+    stub(@donkey).fanout { @fanout }
   end
 
   it "creates routes" do
@@ -80,60 +82,12 @@ describe "Donkey" do
   it "has name" do
     @donkey.name.should == "name"
   end
-  
-  it "calls without a tag" do
-    mock(@ticketer).next { "next-ticket" }
-    mock(@public).call("to","data","next-ticket",{:foo => :bar})
-    @donkey.call("to","data",{:foo => :bar}).should == Donkey::Receipt.new(@donkey,"next-ticket")
-  end
-
-  it "calls with a tag" do
-    mock(@public).call("to","data","tag",{:foo => :bar})
-    @donkey.call("to","data",{:tag => "tag", :foo => :bar}).should == Donkey::Receipt.new(@donkey,"tag")
-  end
-  
-  it "calls and returns future" do
-    pending
-    mock(@public).call(*args = ["to","data"])
-    f = @donkey.call!(*args)
-    f.should be_a(Donkey::Future)
-    # f.wait.should ==
-  end
 
   it "casts" do
     mock(@public).cast(*args = ["to","data",{"foo" => "bar"}])
     @donkey.cast(*args)
   end
-
-  it "listens" do
-    mock(@topic).listen("name","key")
-    @donkey.listen("name","key")
-  end
-
-  it "unlistens" do
-    mock(@topic).unlisten("name","key")
-    @donkey.unlisten("name","key")
-  end
-
-  it "generates event" do
-    mock(@topic).event("name","key","data",dummy_opts)
-    @donkey.event("name","key","data",dummy_opts)
-  end
-
-  it "creates topic" do
-    mock(Donkey).channel { mock!.topic("name",dummy_opts).subject }
-    Donkey.topic("name",dummy_opts)
-  end
-
-  it "replies" do
-    reply_to = "reply_name#reply_id"
-    mock(@header).reply_to { reply_to }
-    mock(@header).message_id { "tag" }
-    opts = { :foo => :bar }
-    mock(@private).reply(reply_to,"result","tag",opts)
-    @donkey.reply(@header,message=Object.new,"result",opts)
-  end
-
+  
   it "acks" do
     mock(@header).ack
     @donkey.ack(@header)
@@ -148,15 +102,6 @@ describe "Donkey" do
     @donkey.reactor.should == @reactor
   end
 
-  it "waits receipts" do
-    keys = %w(1 2 3)
-    receipts = keys.map {|key|
-      Donkey::Receipt.new(@donkey,key)
-    }
-    mock(Donkey::Waiter).new(@signal_map,*keys)
-    @donkey.wait(*receipts)
-  end
-
   it "raises if attempting to wait for receipt from another donkey" do
     receipt = Donkey::Receipt.new(Object.new,"key")
     lambda { @donkey.wait(receipt) }.should raise_error(Donkey::BadReceipt)
@@ -165,6 +110,15 @@ describe "Donkey" do
   it "signals ticket" do
     mock(@signal_map).signal("key","value")
     @donkey.signal("key","value") 
+  end
+
+  it "waits receipts" do
+    keys = %w(1 2 3)
+    receipts = keys.map {|key|
+      Donkey::Receipt.new(@donkey,key)
+    }
+    mock(Donkey::Waiter).new(@signal_map,*keys)
+    @donkey.wait(*receipts)
   end
 
   it "pops with block" do
@@ -206,5 +160,54 @@ describe "Donkey" do
       lambda { @donkey.unsubscribe }.should raise_error(Donkey::NotSubscribed)
     end
   end
+
+  context "public" do
+    it "calls without a tag" do
+      mock(@ticketer).next { "next-ticket" }
+      mock(@public).call("to","data","next-ticket",{:foo => :bar})
+      @donkey.call("to","data",{:foo => :bar}).should == Donkey::Receipt.new(@donkey,"next-ticket")
+    end
+
+    it "calls with a tag" do
+      mock(@public).call("to","data","tag",{:foo => :bar})
+      @donkey.call("to","data",{:tag => "tag", :foo => :bar}).should == Donkey::Receipt.new(@donkey,"tag")
+    end
+
+    it "replies" do
+      reply_to = "reply_name#reply_id"
+      mock(@header).reply_to { reply_to }
+      mock(@header).message_id { "tag" }
+      opts = { :foo => :bar }
+      mock(@private).reply(reply_to,"result","tag",opts)
+      @donkey.reply(@header,message=Object.new,"result",opts)
+    end
+  end
+
+  context "topic" do
+    it "listens" do
+      mock(@topic).listen("name","key")
+      @donkey.listen("name","key")
+    end
+
+    it "unlistens" do
+      mock(@topic).unlisten("name","key")
+      @donkey.unlisten("name","key")
+    end
+
+    it "generates event" do
+      mock(@topic).event("name","key","data",dummy_opts)
+      @donkey.event("name","key","data",dummy_opts)
+    end
+
+    it "creates topic" do
+      mock(Donkey).channel { mock!.topic("name",dummy_opts).subject }
+      Donkey.topic("name",dummy_opts)
+    end
+  end
+  
+  context "fanout" do
+    
+  end
+
 end
 
