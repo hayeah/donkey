@@ -1,5 +1,3 @@
-
-
 class Donkey::Message
   require 'bert'
 

@@ -23,7 +23,8 @@ class Donkey
 channel route
 receipt ticketer
 message reactor
-waiter waiter_map).each { |file|
+signal_map
+waiter).each { |file|
     require "donkey/#{file}"
   }
   
@@ -33,13 +34,13 @@ waiter waiter_map).each { |file|
     end
   end
 
-  attr_reader :id, :name, :channel, :reactor, :waiter_map, :ticketer
+  attr_reader :id, :name, :channel, :reactor, :signal_map, :ticketer
   def initialize(name,reactor)
     @id = Donkey::UUID.generate
     @reactor = reactor
     @name = name
     @channel = Donkey.channel
-    @waiter_map = Donkey::WaiterMap.new
+    @signal_map = Donkey::SignalMap.new
     @ticketer = Donkey::Ticketer.new
   end
 
@@ -89,12 +90,12 @@ waiter waiter_map).each { |file|
   def wait(*receipts,&block)
     raise BadReceipt if receipts.any? { |receipt| receipt.donkey != self }
     keys = receipts.map(&:key)
-    Donkey::Waiter.new(waiter_map,*keys,&block)
+    Donkey::Waiter.new(signal_map,*keys,&block)
   end
 
   # only Reactor should call this
   def signal(key,value)
-    waiter_map.signal(key,value)
+    signal_map.signal(key,value)
   end
 
   # only Reactor should call this
@@ -178,6 +179,3 @@ class Donkey
     end
   end
 end
-
-
-

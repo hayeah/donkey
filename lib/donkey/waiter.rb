@@ -12,13 +12,13 @@ class Donkey::Waiter
   
   attr_reader :pending, :received
   attr_reader :success_callback
-  def initialize(waiter_map,*keys,&block)
+  def initialize(signal_map,*keys,&block)
     @success_callback = block
     @keys = keys
     @pending  = Set.new(@keys)
     @received = {} # map(key => value)
-    @waiter_map = waiter_map
-    @waiter_map.register(self,*keys)
+    @signal_map = signal_map
+    @signal_map.register(self,*keys)
   end
 
   attr_reader :timeout_callback, :timer
@@ -78,7 +78,7 @@ class Donkey::Waiter
   def complete(status,&block)
     return if done?
     @status = status
-    @waiter_map.unregister(self,*@keys)
+    @signal_map.unregister(self,*@keys)
     timer.cancel if timer
     # NB to avoid timing issues, better to clean
     # up, then to call the success callback

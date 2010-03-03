@@ -54,9 +54,9 @@ describe "Donkey" do
     @public = Object.new
     @private = Object.new
     @topic = Object.new
-    @waiter_map = Object.new
+    @signal_map = Object.new
     @ticketer = Object.new
-    stub(Donkey::WaiterMap).new { @waiter_map }
+    stub(Donkey::SignalMap).new { @signal_map }
     stub(Donkey::Ticketer).new { @ticketer }
 
     @donkey = Donkey.new("name",@reactor)
@@ -153,7 +153,7 @@ describe "Donkey" do
     receipts = keys.map {|key|
       Donkey::Receipt.new(@donkey,key)
     }
-    mock(Donkey::Waiter).new(@waiter_map,*keys)
+    mock(Donkey::Waiter).new(@signal_map,*keys)
     @donkey.wait(*receipts)
   end
 
@@ -163,7 +163,7 @@ describe "Donkey" do
   end
 
   it "signals ticket" do
-    mock(@waiter_map).signal("key","value")
+    mock(@signal_map).signal("key","value")
     @donkey.signal("key","value") 
   end
 

@@ -1,7 +1,5 @@
-require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
-require 'pp'
+require File.expand_path(File.dirname(__FILE__) + '/../spec/spec_helper')
 
-  
 module RabbitHelper
   extend self
   def find_exchange(name)
@@ -221,7 +219,7 @@ context "messages" do
     waiter.value(receipt.key).should == :output
 
     # waiter_map should not keep references to completed waiters
-    @donkey.waiter_map.map.should be_empty
+    @donkey.signal_map.map.should be_empty
   end
 
   it "times out" do

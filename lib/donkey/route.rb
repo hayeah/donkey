@@ -130,4 +130,7 @@ class Donkey::Route
       "#{donkey.name}.topic"
     end
   end
+
+  class Cast < self
+  end
 end
