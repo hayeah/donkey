@@ -90,7 +90,7 @@ class Donkey::Route
       @queue = channel.queue(@id,:auto_delete => true).bind(donkey.name,:key => @id)
     end
 
-    def reply(reply_to,data,tag,opts={})
+    def back(reply_to,data,tag,opts={})
       reply_to.match(/^(.+)#(.+)$/)
       donkey_name = $1
       donkey_id = $2
@@ -131,6 +131,33 @@ class Donkey::Route
     end
   end
 
-  class Cast < self
+  class Fanout < self
+    def declare
+      @exchange = channel.fanout("#{donkey.name}.fanout")
+      @queue = channel.queue("#{donkey.id}.fanout",:auto_delete => true).bind("#{donkey.name}.fanout")
+    end
+
+    def bcast(to,data,opts={})
+      publish("#{to}.fanout",
+              Donkey::Message::BCast.new(data),
+              opts)
+    end
+
+    def bcall(to,data,tag,opts={})
+      publish("#{to}.fanout",
+              Donkey::Message::BCall.new(data),
+              opts.merge(:reply_to => "#{@donkey.name}##{@donkey.id}",
+                         :message_id => tag.to_s))
+    end
+
+    def bback(reply_to,data,tag,opts={})
+      reply_to.match(/^(.+)#(.+)$/)
+      donkey_name = $1
+      donkey_id = $2
+      publish(donkey_name,
+              Donkey::Message::BBack.new(data),
+              opts.merge({ :message_id => tag.to_s,
+                           :routing_key => donkey_id}))
+    end
   end
 end

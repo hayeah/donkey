@@ -29,6 +29,12 @@ class Donkey::Reactor
         donkey.signal(header.message_id,message.data)
       when Donkey::Message::Event
         on_event
+      when Donkey::Message::BCall
+        on_bcall
+      when Donkey::Message::BBack
+        donkey.signal(header.message_id,message.data)
+      when Donkey::Message::BCast
+        on_bcast
       end
     rescue => error
       begin
@@ -47,10 +53,15 @@ class Donkey::Reactor
   end
 
   def reply(result,opts={})
-    raise Donkey::Error, "can only reply to a call" unless Donkey::Message::Call === message
+    raise Donkey::Error, "can only reply to a call or bcall" unless Donkey::Message::Call === message || Donkey::Message::BCall === message
     raise Donkey::Error, "can only reply once" if @replied
     @replied = true
-    donkey.reply(header,message,result,opts)
+    case message
+    when Donkey::Message::Call
+      donkey.back(header,message,result,opts)
+    when Donkey::Message::BCall
+      donkey.bback(header,message,result,opts)
+    end
   end
 
   def ack
@@ -68,6 +79,14 @@ class Donkey::Reactor
 
   def on_cast
     raise "abstract"
+  end
+
+  def on_bcast
+    on_cast
+  end
+
+  def on_bcall
+    on_call
   end
 
   def on_event

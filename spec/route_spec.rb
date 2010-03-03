@@ -119,7 +119,7 @@ describe "Donkey::Route" do
       mock(Donkey::Message::Back).new("data") { "back-message" }
       mock(@private).publish("to","back-message",
                              {:foo => :bar, :routing_key => "id", :message_id => "tag"})
-      @private.reply("to#id","data","tag",{ :foo => :bar })
+      @private.back("to#id","data","tag",{ :foo => :bar })
     end
   end
 
@@ -157,4 +157,57 @@ describe "Donkey::Route" do
       @topic.event("name","key","data",dummy_opts)
     end
   end
+
+  context "Fanout" do
+    before do
+      @fanout = Donkey::Route::Fanout.new(@donkey)
+      stub(@channel).fanout.with_any_args
+      stub(@channel).queue.with_any_args { mock!.bind.with_any_args.subject }
+    end
+
+    def exchange_name
+      "#{@donkey.name}.fanout"
+    end
+
+    def queue_name
+      "#{@donkey.id}.fanout"
+    end
+    
+    it "creates fanout exchange" do
+      mock(@channel).fanout(exchange_name) { "exchange" }
+      @fanout.declare
+      @fanout.exchange.should == "exchange"
+    end
+
+    it "creates fanout queue" do
+      queue = Object.new
+      mock(queue).bind(exchange_name) { queue }
+      mock(@channel).queue(queue_name,:auto_delete => true) { queue }
+      @fanout.declare
+      @fanout.queue.should == queue
+    end
+
+    it "fanout calls" do
+      tag="tag"
+      mock(@fanout).publish("to.fanout",is_a(Donkey::Message::BCall),
+                            { :foo => :bar,
+                              :reply_to => "#{@donkey.name}##{@donkey.id}",
+                              :message_id => tag})
+      @fanout.bcall("to","data",tag,:foo => :bar)
+    end
+
+    it "fanout casts" do
+      mock(@fanout).publish("to.fanout",is_a(Donkey::Message::BCast),:foo => :bar)
+      @fanout.bcast("to","data",:foo => :bar)
+    end
+
+    it "replies" do
+      data="data"
+      mock(Donkey::Message::BBack).new("data") { "back-message" }
+      mock(@fanout).publish("to","back-message",
+                             {:foo => :bar, :routing_key => "id", :message_id => "tag"})
+      @fanout.bback("to#id","data","tag",{ :foo => :bar })
+    end
+  end
+  
 end

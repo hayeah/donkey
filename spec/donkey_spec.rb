@@ -71,6 +71,7 @@ describe "Donkey" do
     mock(Donkey::Route::Public).declare(@donkey)
     mock(Donkey::Route::Private).declare(@donkey)
     mock(Donkey::Route::Topic).declare(@donkey)
+    mock(Donkey::Route::Fanout).declare(@donkey)
     mock(@private).subscribe
     @donkey.create
   end
@@ -178,8 +179,8 @@ describe "Donkey" do
       mock(@header).reply_to { reply_to }
       mock(@header).message_id { "tag" }
       opts = { :foo => :bar }
-      mock(@private).reply(reply_to,"result","tag",opts)
-      @donkey.reply(@header,message=Object.new,"result",opts)
+      mock(@private).back(reply_to,"result","tag",opts)
+      @donkey.back(@header,message=Object.new,"result",opts)
     end
   end
 
@@ -206,7 +207,44 @@ describe "Donkey" do
   end
   
   context "fanout" do
+    before do
+      #stub(@fanout).bcall.
+    end
+    it "fanout calls" do
+      mock(@fanout).bcall("to","data","tag",{})
+      mock(Donkey::Signaler).new(@signal_map,"tag") { "signaler" }.yields
+      call = mock!.here.subject
+      @donkey.bcall("to","data",:tag => "tag") { call.here }.should == "signaler"
+    end
     
+    it "calls without a tag" do
+      mock(@ticketer).next { "next-ticket" }
+      mock(@fanout).bcall("to","data","next-ticket",dummy_opts)
+      @donkey.bcall("to","data",dummy_opts) { }
+    end
+
+    it "calls with a tag" do
+      mock(@fanout).bcall("to","data","tag",dummy_opts)
+      @donkey.bcall("to","data",dummy_opts.merge(:tag => "tag")) { }
+    end
+
+    it "raises if bcalling without a block" do
+      lambda { @donkey.bcall("to","data",dummy_opts) }.should raise_error(Donkey::NoBCallBlock)
+    end
+
+    it "bcasts" do
+      mock(@fanout).bcast("to","data",dummy_opts)
+      @donkey.bcast("to","data",dummy_opts)
+    end
+
+    it "bbacks" do
+      reply_to = "reply_name#reply_id"
+      mock(@header).reply_to { reply_to }
+      mock(@header).message_id { "tag" }
+      opts = { :foo => :bar }
+      mock(@fanout).bback(reply_to,"result","tag",opts)
+      @donkey.bback(@header,message=Object.new,"result",opts)
+    end
   end
 
 end

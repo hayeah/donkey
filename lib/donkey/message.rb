@@ -16,11 +16,23 @@ class Donkey::Message
   class Event < self
   end
 
+  class BCall < self
+  end
+
+  class BBack < self
+  end
+
+  class BCast < self
+  end
+
   TAG_TO_CLASS = {
     "call" => Call,
     "cast" => Cast,
     "back" => Back,
-    "event" => Event
+    "event" => Event,
+    "bcall" => BCall,
+    "bback" => BBack,
+    "bcast" => BCast
   }
   CLASS_TO_TAG = TAG_TO_CLASS.inject({}) do |h,(k,v)|
     h[v] = k

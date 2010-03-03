@@ -27,6 +27,22 @@ describe "Donkey::Reactor" do
     @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
   end
 
+  def bcast(ack=false)
+    @message = Donkey::Message::BCast.new("data")
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
+  end
+
+  def bcall(ack=false)
+    @message = Donkey::Message::BCall.new("data")
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
+  end
+
+  def bback(ack=false)
+    stub(@header).message_id { "message_id" }
+    @message = Donkey::Message::BBack.new("data")
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
+  end
+
   it "processes" do
     mock(Donkey::Reactor).new(donkey="donkey",header="header",message="message",ack=true) {
       mock!.process.subject
@@ -56,28 +72,58 @@ describe "Donkey::Reactor" do
   end
 
   context "#reply" do
-    before(:each) do
+    def call_reply
       call
       @result = "result"
-      mock(@donkey).reply(@header,@message,@result,is_a(Hash))
+      mock(@donkey).back(@header,@message,@result,is_a(Hash))
+      @reactor.reply(@result)
+    end
+
+    def bcall_reply
+      bcall
+      @result = "result"
+      mock(@donkey).bback(@header,@message,@result,is_a(Hash))
+      @reactor.reply(@result)
     end
     
     it "replies" do
-      @reactor.reply(@result)
+      call_reply
     end
     
     it "raises if replied twice" do
-      @reactor.reply(@result)
+      call_reply
       lambda { @reactor.reply(@result) }.should raise_error(Donkey::Error)
     end
 
     it "returns true if already replied" do
-      @reactor.reply(@result)
+      call_reply
       @reactor.replied?.should == true
     end
+
+    it "replies to bcall" do
+      bcall_reply
+    end
   end
-  
+
   context "#process" do
+    it "processes BCall" do
+      bcall
+      mock(@reactor).on_bcall
+      @reactor.process
+    end
+
+    it "processes BCast" do
+      bcast
+      mock(@reactor).on_bcast
+      @reactor.process
+    end
+
+    it "processes BBack" do
+      bback
+      mock(@donkey).signal(@header.message_id,@message.data)
+      @reactor.process
+    end
+    
     it "processes Call" do
       call
       mock(@reactor).on_call

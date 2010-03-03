@@ -69,6 +69,13 @@ describe "Donkey" do
     q["auto_delete"].should == true
   end
 
+  it "creates fanout route" do
+    exchange_name = "test.fanout"
+    queue_name = "#{@donkey.id}.fanout"
+    find_exchange(exchange_name).should_not be_nil
+    find_queue(queue_name).should_not be_nil
+    find_binding(exchange_name,queue_name).should_not be_nil
+  end
 
   context "topic" do
     def name
@@ -313,6 +320,58 @@ context "messages" do
       @donkey.event(exchange,"key3",1)
       sleep(1)
       count(@donkey.topic.queue.name).should == 0
+    end
+  end
+
+  context "fanout" do
+    before do
+      @donkey1 = @donkey
+      @donkey2 = Donkey.new("test",TestReactor)
+      @donkey2.create
+    end
+
+    def bcast(data)
+      @donkey.bcast(@donkey.name,data)
+    end
+
+    def bcall(data,&block)
+      @donkey1.bcall(@donkey.name,data,:tag => "tag",&block)
+    end
+
+    it "bcasts two donkeys" do
+      q = Queue.new
+      react(:on_bcast) { q << self }
+      bcast("bcast-data")
+      # sleep(1)
+      @donkey1.fanout.pop
+      @donkey2.fanout.pop
+      reactors = 2.times.map { q.pop }
+      reactor1 = reactors.find { |r| r.donkey == @donkey1 }
+      reactor2 = reactors.find { |r| r.donkey == @donkey2 }
+      reactor1.should_not be_nil
+      reactor2.should_not be_nil
+
+      reactor1.message.should be_a(Donkey::Message::BCast)
+      reactor1.message.data.should == "bcast-data"
+
+      reactor2.message.data.should == "bcast-data"
+    end
+
+    it "bcalls two donkeys" do
+      q = Queue.new
+      react(:on_bcall) { q << self }
+      signaler = bcall("bcall-data") { |result| q << result }.timeout(10)
+      @donkey1.signal_map.listeners_of("tag").should include(signaler)
+      @donkey1.fanout.pop
+      @donkey2.fanout.pop
+      reactors = 2.times.map { q.pop }
+      reactor1 = reactors.find { |r| r.donkey == @donkey1 }
+      reactor2 = reactors.find { |r| r.donkey == @donkey2 }
+      reactor1.reply("back from donkey1")
+      reactor2.reply("back from donkey2")
+
+      results = 2.times.map { q.pop }
+      results.should include("back from donkey1","back from donkey2")
     end
   end
 end

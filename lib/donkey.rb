@@ -19,11 +19,15 @@ class Donkey
   class NotSubscribed < Error
   end
 
+  class NoBCallBlock < Error
+  end
+
   %w(uuid rabbit
 channel route
 receipt ticketer
 message reactor
 signal_map
+signaler
 waiter).each { |file|
     require "donkey/#{file}"
   }
@@ -44,11 +48,12 @@ waiter).each { |file|
     @ticketer = Donkey::Ticketer.new
   end
 
-  attr_reader :public, :private, :topic
+  attr_reader :public, :private, :topic, :fanout
   def create
     @public  = Route::Public.declare(self)
     @private = Route::Private.declare(self)
     @topic = Route::Topic.declare(self)
+    @fanout = Route::Fanout.declare(self)
     private.subscribe
   end
 
@@ -63,14 +68,33 @@ waiter).each { |file|
   end
 
   # only Reactor should call this (by magic...)
-  def reply(header,message,result,opts={})
+  def back(header,message,result,opts={})
     # message not used
-    private.reply(header.reply_to,
-                  result,
-                  header.message_id,
-                  opts)
+    private.back(header.reply_to,
+                 result,
+                 header.message_id,
+                 opts)
   end
 
+  def bback(header,message,result,opts={})
+    # message not used
+    fanout.bback(header.reply_to,
+                 result,
+                 header.message_id,
+                 opts)
+  end
+
+  def bcall(to,data,opts={},&block)
+    raise NoBCallBlock unless block
+    tag = opts.delete(:tag) || ticketer.next
+    fanout.bcall(to,data,tag,opts)
+    Donkey::Signaler.new(signal_map,tag,&block)
+  end
+
+  def bcast(to,data,opts={})
+    fanout.bcast(to,data,opts)
+  end
+  
   def event(name,key,data,opts={})
     topic.event(name,key,data,opts)
   end
