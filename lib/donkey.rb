@@ -74,6 +74,12 @@ class Donkey
     end
   end
 
+  class << self
+    def topic(name,opts={})
+      Donkey.channel.topic(name,opts)
+    end
+  end
+
   attr_reader :id, :name, :channel, :reactor, :waiter_map, :ticketer
   def initialize(name,reactor)
     @id = Donkey::UUID.generate
@@ -84,10 +90,11 @@ class Donkey
     @ticketer = Donkey::Ticketer.new
   end
 
-  attr_reader :public, :private
+  attr_reader :public, :private, :topic
   def create
     @public  = Route::Public.declare(self)
     @private = Route::Private.declare(self)
+    @topic = Route::Topic.declare(self)
     private.subscribe
   end
 
@@ -108,6 +115,18 @@ class Donkey
                   result,
                   header.message_id,
                   opts)
+  end
+
+  def event(name,key,data,opts={})
+    topic.event(name,key,data,opts)
+  end
+
+  def listen(name,key)
+    topic.listen(name,key)
+  end
+
+  def unlisten(name,key)
+    topic.unlisten(name,key)
   end
 
   def ack(header)
@@ -338,6 +357,8 @@ class Donkey::Reactor
         on_cast
       when Donkey::Message::Back
         donkey.signal(header.message_id,message.data)
+      when Donkey::Message::Event
+        on_event
       end
     rescue => error
       begin
@@ -376,6 +397,10 @@ class Donkey::Reactor
   end
 
   def on_cast
+    raise "abstract"
+  end
+
+  def on_event
     raise "abstract"
   end
 
@@ -447,6 +472,10 @@ class Donkey::Channel
       @on_disconnect.call if @on_disconnect
     end
   end
+
+  def inspect
+    "#<#{self.class}:#{object_id}>"
+  end
 end
 
 class Donkey::Message
@@ -464,10 +493,14 @@ class Donkey::Message
   class Cast < self
   end
 
+  class Event < self
+  end
+
   TAG_TO_CLASS = {
     "call" => Call,
     "cast" => Cast,
-    "back" => Back
+    "back" => Back,
+    "event" => Event
   }
   CLASS_TO_TAG = TAG_TO_CLASS.inject({}) do |h,(k,v)|
     h[v] = k
@@ -563,6 +596,10 @@ class Donkey::Route
     queue.unsubscribe(opts)
   end
 
+  def inspect
+    "#<#{self.class}:#{object_id}>"
+  end
+
   protected
 
   def publish(to,message,opts={})
@@ -610,6 +647,36 @@ class Donkey::Route
               Donkey::Message::Back.new(data),
               opts.merge({ :message_id => tag.to_s,
                            :routing_key => donkey_id}))
+    end
+  end
+
+  class Topic < self
+    def self.topic(name,opts={})
+      channel.topic(name,opts)
+    end
+    
+    def declare
+      @queue = channel.queue(queue_name)
+    end
+
+    def listen(exchange_name,key)
+      queue.bind(exchange_name,:routing_key => key)
+    end
+
+    def unlisten(exchange_name,key)
+      queue.unbind(exchange_name,:routing_key => key)
+    end
+
+    def event(name,key,data,opts={})
+      publish(name,
+              Donkey::Message::Event.new(data),
+              opts.merge({ :routing_key => key}))
+    end
+
+    private
+    
+    def queue_name
+      "#{donkey.name}.topic"
     end
   end
 end

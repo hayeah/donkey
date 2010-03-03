@@ -32,6 +32,7 @@ describe "Donkey" do
     Donkey.stop
     Donkey::Rabbit.restart
     @reactor = Object.new
+    Donkey.topic("test.topic")
     @donkey = Donkey.new("test",@reactor)
     @donkey.create
   end
@@ -69,8 +70,49 @@ describe "Donkey" do
     (q = find_queue(@donkey.id)).should_not be_nil
     q["auto_delete"].should == true
   end
-end
 
+
+  context "topic" do
+    def name
+      "test.topic"
+    end
+    it "creates topic exchange" do
+      find_exchange(name).should_not be_nil
+    end
+
+    it "creates topic queue" do
+      find_queue(name).should_not be_nil
+    end
+
+    it "creates topic binding" do
+      @donkey.listen(name,"key")
+      find_binding(name,name)["routing_key"].should == "key"
+    end
+
+    def bindings
+      Donkey::Rabbit.bindings.select { |r|
+        r["exchange_name"] == name && r["queue_name"] == name
+      }
+    end
+    
+    it "creates topic bindings" do
+      @donkey.listen(name,"key1")
+      @donkey.listen(name,"key2")
+      bindings.should have(2).items
+    end
+
+    it "unbinds topic bindings" do
+      @donkey.listen(name,"key1")
+      @donkey.listen(name,"key2")
+      bindings.should have(2).items
+      @donkey.unlisten(name,"key1")
+      bs = bindings
+      bs.should have(1).items
+      bs.find { |b| b["routing_key"] == "key1" }.should be_nil
+      bs.find { |b| b["routing_key"] == "key2" }.should_not be_nil
+    end
+  end
+end
 
 context "messages" do
   include RabbitHelper
@@ -89,8 +131,8 @@ context "messages" do
     end
   end
 
-  def count
-    find_queue(@donkey.name)["messages"]
+  def count(queue_name=@donkey.name)
+    find_queue(queue_name)["messages"]
   end
   
   class TestReactor < Donkey::Reactor
@@ -99,6 +141,7 @@ context "messages" do
   before(:each) do
     Donkey.stop
     Donkey::Rabbit.restart
+    Donkey.topic("test.topic")
     @donkey = Donkey.new("test",TestReactor)
     @donkey.create
     @q = Queue.new
@@ -240,5 +283,38 @@ context "messages" do
     reactors.each(&:ack)
     sleep(1)
     count.should == 0
+  end
+
+  context "topic" do
+    def exchange
+      "test.topic"
+    end
+
+    it "gets an event" do
+      q = Queue.new
+      react(:on_event) {q << self}
+      @donkey.listen(exchange,"#")
+      @donkey.event(exchange,"key","data")
+      @donkey.topic.pop
+      reactor = q.pop
+      reactor.header.exchange.should == exchange
+      reactor.header.routing_key.should == "key"
+      reactor.message.data.should == "data"
+    end
+
+    it "binds to multiple keys" do
+      q = Queue.new
+      react(:on_event) {q << self}
+      @donkey.listen(exchange,"key1")
+      @donkey.listen(exchange,"key2")
+      @donkey.event(exchange,"key1",1)
+      @donkey.event(exchange,"key2",2)
+      count(@donkey.topic.queue.name).should == 2
+      2.times { @donkey.topic.pop }
+      2.times.map { q.pop.message.data }.sort.should == [1,2]
+      @donkey.event(exchange,"key3",1)
+      sleep(1)
+      count(@donkey.topic.queue.name).should == 0
+    end
   end
 end

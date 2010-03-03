@@ -57,6 +57,7 @@ describe "Donkey" do
     @reactor = Object.new
     @public = Object.new
     @private = Object.new
+    @topic = Object.new
     @waiter_map = Object.new
     @ticketer = Object.new
     stub(Donkey::WaiterMap).new { @waiter_map }
@@ -65,11 +66,13 @@ describe "Donkey" do
     @donkey = Donkey.new("name",@reactor)
     stub(@donkey).public { @public }
     stub(@donkey).private { @private }
+    stub(@donkey).topic { @topic }
   end
 
   it "creates routes" do
     mock(Donkey::Route::Public).declare(@donkey)
     mock(Donkey::Route::Private).declare(@donkey)
+    mock(Donkey::Route::Topic).declare(@donkey)
     mock(@private).subscribe
     @donkey.create
   end
@@ -104,6 +107,26 @@ describe "Donkey" do
   it "casts" do
     mock(@public).cast(*args = ["to","data",{"foo" => "bar"}])
     @donkey.cast(*args)
+  end
+
+  it "listens" do
+    mock(@topic).listen("name","key")
+    @donkey.listen("name","key")
+  end
+
+  it "unlistens" do
+    mock(@topic).unlisten("name","key")
+    @donkey.unlisten("name","key")
+  end
+
+  it "generates event" do
+    mock(@topic).event("name","key","data",dummy_opts)
+    @donkey.event("name","key","data",dummy_opts)
+  end
+
+  it "creates topic" do
+    mock(Donkey).channel { mock!.topic("name",dummy_opts).subject }
+    Donkey.topic("name",dummy_opts)
   end
 
   it "replies" do
@@ -225,6 +248,11 @@ describe "Donkey::Reactor" do
     @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
   end
 
+  def event(ack=false)
+    @message = Donkey::Message::Event.new("data")
+    @reactor = Donkey::Reactor.new(@donkey,@header,@message,ack)
+  end
+
   it "processes" do
     mock(Donkey::Reactor).new(donkey="donkey",header="header",message="message",ack=true) {
       mock!.process.subject
@@ -291,6 +319,12 @@ describe "Donkey::Reactor" do
     it "processes Back" do
       back
       mock(@donkey).signal(@header.message_id,@message.data)
+      @reactor.process
+    end
+
+    it "processes Event" do
+      event
+      mock(@reactor).on_event
       @reactor.process
     end
 
@@ -756,6 +790,41 @@ describe "Donkey::Route" do
       mock(@private).publish("to","back-message",
                              {:foo => :bar, :routing_key => "id", :message_id => "tag"})
       @private.reply("to#id","data","tag",{ :foo => :bar })
+    end
+  end
+
+  context "Topic" do
+    before do
+      stub(@channel).queue.with_any_args
+      @topic = Donkey::Route::Topic.new(@donkey)
+    end
+
+    it "creates topic exchange" do
+      pending
+      mock(@channel).topic("name",dummy_opts)
+      @topic.topic("name",dummy_opts)
+    end
+    
+    it "declares" do
+      mock(@channel).queue("queue_name")
+      mock(@topic).queue_name { "queue_name" }
+      @topic.declare
+    end
+
+    it "listens" do
+      mock(@topic).queue { mock!.bind("exchange", :routing_key => "topic-key")}
+      @topic.listen("exchange","topic-key")
+    end
+
+    it "unlistens" do
+      mock(@topic).queue { mock!.unbind("exchange", :routing_key => "topic-key")}
+      @topic.unlisten("exchange","topic-key")
+    end
+
+    it "publishes event" do
+      mock(Donkey::Message::Event).new("data") { "event-message" }
+      mock(@topic).publish("name","event-message",dummy_opts.merge(:routing_key => "key"))
+      @topic.event("name","key","data",dummy_opts)
     end
   end
 end
