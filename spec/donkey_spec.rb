@@ -639,7 +639,8 @@ end
 describe "Donkey::Route" do
   before(:each) do
     @channel = Object.new
-    @donkey = Donkey.new("name",@reactor=Object.new,@channel)
+    stub(Donkey).channel { @channel }
+    @donkey = Donkey.new("name",@reactor=Object.new)
   end
 
   context "Route" do

@@ -75,11 +75,11 @@ class Donkey
   end
 
   attr_reader :id, :name, :channel, :reactor, :waiter_map, :ticketer
-  def initialize(name,reactor,channel=Donkey.channel)
+  def initialize(name,reactor)
     @id = Donkey::UUID.generate
     @reactor = reactor
     @name = name
-    @channel = channel
+    @channel = Donkey.channel
     @waiter_map = Donkey::WaiterMap.new
     @ticketer = Donkey::Ticketer.new
   end
