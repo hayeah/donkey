@@ -3,7 +3,8 @@ require 'mq'
 $:.unshift(File.dirname(__FILE__)) unless
   $:.include?(File.dirname(__FILE__)) || $:.include?(File.expand_path(File.dirname(__FILE__)))
 
-require 'monkey/mq'
+# monkey patching amqp for publishing without creating an exchange object
+require 'donkey/mq'
 
 class Donkey
   class Error < RuntimeError
