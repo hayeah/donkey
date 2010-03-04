@@ -72,7 +72,6 @@ describe "Donkey" do
     mock(Donkey::Route::Private).declare(@donkey)
     mock(Donkey::Route::Topic).declare(@donkey)
     mock(Donkey::Route::Fanout).declare(@donkey)
-    mock(@private).subscribe
     @donkey.create
   end
 
@@ -120,46 +119,6 @@ describe "Donkey" do
     }
     mock(Donkey::Waiter).new(@signal_map,*keys)
     @donkey.wait(*receipts)
-  end
-
-  it "pops with block" do
-    block = mock!.entered.subject
-    mock(@public).pop(dummy_opts).yields
-    @donkey.pop(dummy_opts) { block.entered }
-  end
-  
-  context "#subscribe" do
-    before do
-      stub(@donkey.public).subscribe
-      stub(@donkey.public).unsubscribe
-    end
-    
-    it "cannot pop if already subscribed" do
-      @donkey.subscribe
-      lambda { @donkey.pop }.should raise_error(Donkey::AlreadySubscribed)
-    end
-
-    it "cannot subscribe if already subscribed" do
-      @donkey.subscribe
-      lambda { @donkey.subscribe }.should raise_error(Donkey::AlreadySubscribed)
-    end
-    
-    it "subscribes" do
-      mock(@donkey.public).subscribe(dummy_opts)
-      @donkey.subscribe(dummy_opts)
-      @donkey.subscribed?.should be_true
-    end
-
-    it "unsubscribes" do
-      @donkey.subscribe
-      @donkey.subscribed?.should be_true
-      @donkey.unsubscribe
-      @donkey.subscribed?.should be_false
-    end
-
-    it "cannot unsubscribe if not subscribed" do
-      lambda { @donkey.unsubscribe }.should raise_error(Donkey::NotSubscribed)
-    end
   end
 
   context "public" do

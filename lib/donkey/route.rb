@@ -1,4 +1,10 @@
 class Donkey::Route
+  class AlreadySubscribed < Donkey::Error
+  end
+
+  class NotSubscribed < Donkey::Error
+  end
+  
   attr_reader :donkey
   def self.declare(donkey)
     route = self.new(donkey)
@@ -22,6 +28,7 @@ class Donkey::Route
 
   #gets one message delivered
   def pop(opts={},&on_empty)
+    raise AlreadySubscribed if subscribed?
     ack = (opts[:ack] == true)
     queue.pop(opts) do |header,payload|
       # NB: when the queue is empty, header is an
@@ -35,8 +42,14 @@ class Donkey::Route
       end
     end
   end
-  
+
+  def subscribed?
+    @subscribed == true
+  end
+
   def subscribe(opts={})
+    raise AlreadySubscribed if subscribed?
+    @subscribed = true
     ack = (opts[:ack] == true)
     queue.subscribe(opts) do |header,payload|
       process(header,payload,ack)
@@ -44,6 +57,7 @@ class Donkey::Route
   end
 
   def unsubscribe(opts={})
+    raise Donkey::Route::NotSubscribed unless subscribed?
     queue.unsubscribe(opts)
   end
 

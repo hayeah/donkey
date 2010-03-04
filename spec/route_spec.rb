@@ -22,40 +22,62 @@ describe "Donkey::Route" do
       dummy_opts.merge(:ack => true)
     end
 
-    it "subscribes" do
-      mock(@queue).subscribe(dummy_opts).yields(@header,@payload)
-      mock(@route).process(@header,@payload,false)
-      @route.subscribe(dummy_opts)
-    end
+    context "consuming" do
+      before do
+        stub(@queue).subscribe.with_any_args
+      end
 
-    it "subscribes with ack" do
-      mock(@queue).subscribe(ack_opts).yields(@header,@payload)
-      mock(@route).process(@header,@payload,true)
-      @route.subscribe(ack_opts)
-    end
+      it "subscribes" do
+        mock(@queue).subscribe(dummy_opts).yields(@header,@payload)
+        mock(@route).process(@header,@payload,false)
+        @route.subscribe(dummy_opts)
+        @route.subscribed?.should == true
+      end
 
-    it "unsubscribes" do
-      mock(@queue).unsubscribe(dummy_opts)
-      @route.unsubscribe(dummy_opts)
-    end
+      it "subscribes with ack" do
+        mock(@queue).subscribe(ack_opts).yields(@header,@payload)
+        mock(@route).process(@header,@payload,true)
+        @route.subscribe(ack_opts)
+      end
 
-    it "pops a message" do
-      mock(@queue).pop(dummy_opts).yields(@header,@payload)
-      mock(@route).process(@header,@payload,false)
-      @route.pop(dummy_opts)
-    end
+      it "cannot subscribe if already subscribed" do
+        @route.subscribe
+        lambda { @route.subscribe }.should raise_error(Donkey::Route::AlreadySubscribed)
+      end
 
-    it "pops a message with ack" do
-      mock(@queue).pop(ack_opts).yields(@header,@payload)
-      mock(@route).process(@header,@payload,true)
-      @route.pop(ack_opts)
-    end
+      it "unsubscribes" do
+        mock(@route).subscribed? { true }
+        mock(@queue).unsubscribe(dummy_opts)
+        @route.unsubscribe(dummy_opts)
+      end
 
-    it "handles empty queue when popping" do
-      mock(@queue).pop(dummy_opts).yields(nil,nil)
-      dont_allow(@route).process
-      block = mock!.entered.subject
-      @route.pop(dummy_opts) { block.entered  }
+      it "cannot unsubscribe if not subscribed" do
+        lambda { @route.unsubscribe }.should raise_error(Donkey::Route::NotSubscribed)
+      end
+
+      it "pops a message" do
+        mock(@queue).pop(dummy_opts).yields(@header,@payload)
+        mock(@route).process(@header,@payload,false)
+        @route.pop(dummy_opts)
+      end
+
+      it "pops a message with ack" do
+        mock(@queue).pop(ack_opts).yields(@header,@payload)
+        mock(@route).process(@header,@payload,true)
+        @route.pop(ack_opts)
+      end
+
+      it "handles empty queue when popping" do
+        mock(@queue).pop(dummy_opts).yields(nil,nil)
+        dont_allow(@route).process
+        block = mock!.entered.subject
+        @route.pop(dummy_opts) { block.entered  }
+      end
+
+      it "cannot pop if already subscribed" do
+        @route.subscribe
+        lambda { @route.pop }.should raise_error(Donkey::Route::AlreadySubscribed)
+      end
     end
   end
 
@@ -127,12 +149,6 @@ describe "Donkey::Route" do
     before do
       stub(@channel).queue.with_any_args
       @topic = Donkey::Route::Topic.new(@donkey)
-    end
-
-    it "creates topic exchange" do
-      pending
-      mock(@channel).topic("name",dummy_opts)
-      @topic.topic("name",dummy_opts)
     end
     
     it "declares" do

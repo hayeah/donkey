@@ -13,12 +13,6 @@ class Donkey
   class BadReceipt < Error
   end
 
-  class AlreadySubscribed < Error
-  end
-
-  class NotSubscribed < Error
-  end
-
   class NoBCallBlock < Error
   end
 
@@ -54,7 +48,6 @@ waiter).each { |file|
     @private = Route::Private.declare(self)
     @topic = Route::Topic.declare(self)
     @fanout = Route::Fanout.declare(self)
-    private.subscribe
   end
 
   def call(to,data,opts={})
@@ -125,27 +118,6 @@ waiter).each { |file|
   # only Reactor should call this
   def process(header,message,ack)
     @reactor.process(self,header,message,ack)
-  end
-
-  def pop(opts={},&on_empty)
-    raise Donkey::AlreadySubscribed if subscribed?
-    public.pop(opts,&on_empty)
-  end
-
-  def subscribe(opts={})
-    raise Donkey::AlreadySubscribed if subscribed?
-    public.subscribe(opts)
-    @subscribed = true
-  end
-
-  def unsubscribe(opts={})
-    raise Donkey::NotSubscribed if not subscribed?
-    public.unsubscribe
-    @subscribed = false
-  end
-
-  def subscribed?
-    @subscribed == true
   end
 end
 

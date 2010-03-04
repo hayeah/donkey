@@ -149,12 +149,13 @@ context "messages" do
     Donkey.topic("test.topic")
     @donkey = Donkey.new("test",TestReactor)
     @donkey.create
+    @donkey.private.subscribe
     @q = Queue.new
   end
 
   it "pops empty queue" do
     q = Queue.new
-    @donkey.pop { q << :empty }
+    @donkey.public.pop { q << :empty }
     q.pop.should == :empty
   end
 
@@ -165,7 +166,7 @@ context "messages" do
       q << self
     }
     count.should == 1
-    @donkey.pop
+    @donkey.public.pop
     reactor = q.pop
     count.should == 0
     reactor.ack?.should be_false
@@ -179,7 +180,7 @@ context "messages" do
       q << self
     }
     count.should == 1
-    @donkey.pop(:ack => true)
+    @donkey.public.pop(:ack => true)
     reactor = q.pop
     reactor.ack?.should be_true
     #  not yet acked, so message in queue count should still be 1
@@ -195,7 +196,7 @@ context "messages" do
     react(:on_cast) {
       q << message.data
     }
-    @donkey.pop
+    @donkey.public.pop
     q.pop.should == :input
   end
   
@@ -212,7 +213,7 @@ context "messages" do
     waiter.pending.should have(1).key
     waiter.pending.should include(receipt.key)
     
-    @donkey.pop
+    @donkey.public.pop
     reactor = q.pop
     msg = reactor.message
     msg.should be_a(Donkey::Message::Call)
@@ -251,7 +252,7 @@ context "messages" do
     @donkey.wait(r1,r2) { |v1,v2|
       q << [v1,v2]
     }
-    2.times { @donkey.pop }
+    2.times { @donkey.public.pop }
     q.pop.should == [1,2]
   end
 
@@ -264,7 +265,7 @@ context "messages" do
     sleep(1)
     count.should == 10
     
-    @donkey.subscribe
+    @donkey.public.subscribe
     reactors = 10.times.map { q.pop }
     count.should == 0
     reactors.each { |reactor|
@@ -274,7 +275,7 @@ context "messages" do
   end
 
   it "subscribes with ack" do
-    @donkey.subscribe(:ack => true)
+    @donkey.public.subscribe(:ack => true)
     q = Queue.new
     react(:on_cast) {
       q << self
