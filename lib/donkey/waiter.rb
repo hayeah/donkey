@@ -6,12 +6,6 @@ class Donkey::Waiter
 
   class AlreadySignaled < Error
   end
-
-  class TimeoutAlreadySet < Error
-  end
-
-  class CallbackAlreadySet < Error
-  end
   
   attr_reader :pending, :received
   attr_reader :success_callback
@@ -26,7 +20,7 @@ class Donkey::Waiter
 
   attr_reader :timeout_callback, :timer
   def timeout(time,&block)
-    raise TimeoutAlreadySet,self if @timer
+    raise Donkey::TimeoutAlreadySet,self if @timer
     @timer = EM::Timer.new(time) {on_timeout}
     @timeout_callback = block
     self
@@ -36,7 +30,7 @@ class Donkey::Waiter
   # different thread than the EventMachine thread,
   # otherwise you'd be fucked.
   def wait!(time=nil)
-    raise CallbackAlreadySet if success_callback
+    raise Donkey::CallbackAlreadySet if success_callback
     q = Queue.new
     @success_callback = lambda { |*results|
       q.enq(results)

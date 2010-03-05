@@ -48,7 +48,12 @@ describe "Donkey::Signaler" do
 
     it "raises error if timeout already set" do
       set_timeout
-      lambda { set_timeout }.should raise_error(Donkey::Signaler::TimeoutAlreadySet)
+      lambda { set_timeout }.should raise_error(Donkey::TimeoutAlreadySet)
+    end
+
+    it "raises error if signal callback is not set" do
+      @signaler = Donkey::Signaler.new(@signal_map,@key)
+      lambda { set_timeout }.should raise_error(Donkey::NoBlockGiven)
     end
 
     it "returns waiter instance" do
@@ -104,5 +109,53 @@ describe "Donkey::Signaler" do
       timeout
     end
   end
-  
+
+  context "#wait!" do
+    before do
+      stub(@map).register.with_any_args
+      stub(@map).unregister.with_any_args
+      @timer = Object.new
+      stub(EM::Timer).new { @timer }
+      @queue = Object.new
+      stub(Queue).new { @queue }
+      stub(@queue).pop
+      signaler
+    end
+
+    def signaler(&block)
+      @signaler = Donkey::Signaler.new(@map,@key,&block)
+    end
+    
+    it "raises if success callback is already set" do
+      signaler { }
+      lambda { @signaler.wait!(10) }.should raise_error(Donkey::CallbackAlreadySet)
+    end
+    
+    it "sets signal callback" do
+      mock(@queue).enq(1)
+      mock(@queue).enq(2)
+      mock(@queue).enq(3)
+      mock(@queue).size { 3 }
+      mock(@queue).pop.times(3)
+      mock(@queue).pop { :timeout }
+      @signaler.wait!(10)
+      @signaler.signal_callback.call(1)
+      @signaler.signal_callback.call(2)
+      @signaler.signal_callback.call(3)
+    end
+
+    it "sets timeout callback" do
+      mock(@queue).enq(:timeout)
+      mock(@queue).pop { [] }
+      mock(@queue).size { 0 }
+      @signaler.wait!(10)
+      @signaler.timeout_callback.call
+    end
+
+    it "returns result" do
+      stub(@queue).pop.returns { 1 }
+      mock(@queue).size { 2 }
+      @signaler.wait!(10).should == [1,1]
+    end
+  end
 end

@@ -19,6 +19,12 @@ class Donkey
   class Timeout < Error
   end
 
+  class TimeoutAlreadySet < Error
+  end
+
+  class CallbackAlreadySet < Error
+  end
+
   %w(uuid rabbit
 channel route
 receipt ticketer
@@ -82,7 +88,6 @@ reactor actor).each { |file|
   end
 
   def bcall(to,data,opts={},&block)
-    raise NoBlockGiven unless block
     tag = opts.delete(:tag) || ticketer.next
     fanout.bcall(to,data,tag,opts)
     Donkey::Signaler.new(signal_map,tag,&block)

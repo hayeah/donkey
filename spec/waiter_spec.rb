@@ -138,7 +138,7 @@ describe "Donkey::Waiter" do
 
     it "raises error if timeout already set" do
       set_timeout
-      lambda { set_timeout }.should raise_error(Donkey::Waiter::TimeoutAlreadySet)
+      lambda { set_timeout }.should raise_error(Donkey::TimeoutAlreadySet)
     end
 
     it "returns waiter instance" do
@@ -269,13 +269,13 @@ describe "Donkey::Waiter" do
     
     it "raises if success callback is already set" do
       @waiter = Donkey::Waiter.new(@map,@key1,@key2) { }
-      lambda { @waiter.wait! }.should raise_error(Donkey::Waiter::CallbackAlreadySet)
+      lambda { @waiter.wait! }.should raise_error(Donkey::CallbackAlreadySet)
     end
 
     it "raises if timeout callback is already set" do
       @waiter = Donkey::Waiter.new(@map,@key1,@key2)
       @waiter.timeout(10) { }
-      lambda { @waiter.wait!(10) }.should raise_error(Donkey::Waiter::TimeoutAlreadySet)
+      lambda { @waiter.wait!(10) }.should raise_error(Donkey::TimeoutAlreadySet)
     end
 
     it "sets success callback" do

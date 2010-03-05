@@ -207,10 +207,6 @@ describe "Donkey" do
       @donkey.bcall("to","data",dummy_opts.merge(:tag => "tag")) { }
     end
 
-    it "raises if bcalling without a block" do
-      lambda { @donkey.bcall("to","data",dummy_opts) }.should raise_error(Donkey::NoBlockGiven)
-    end
-
     it "bcasts" do
       mock(@fanout).bcast("to","data",dummy_opts)
       @donkey.bcast("to","data",dummy_opts)

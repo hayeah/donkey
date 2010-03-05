@@ -427,5 +427,13 @@ context "Reactor" do
       results = 2.times.map { q.pop }
       results.should include("back from donkey1","back from donkey2")
     end
+
+    it "wait! on bcall" do
+      react(:on_bcall) { reply "bback" }
+      signaler = bcall("bcall")
+      @donkey1.fanout.pop
+      @donkey2.fanout.pop
+      signaler.wait!(1).should == ["bback","bback"]
+    end
   end
 end
