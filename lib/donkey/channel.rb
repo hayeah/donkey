@@ -15,11 +15,8 @@ class Donkey::Channel
   def self.ensure_eventmachine
     unless EM.reactor_running?
       q = Queue.new
-      t = Thread.new {
-        q << :ok
-        EM.run
-      }
-      q.pop # force yeilding to thread
+      t = Thread.new {EM.run { q << :ok }}
+      q.pop # force yeilding to allow EM to start
       t.abort_on_exception = true
     end
   end
