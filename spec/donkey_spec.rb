@@ -102,24 +102,35 @@ describe "Donkey" do
     @donkey.reactor.should == @reactor
   end
 
-  it "raises if attempting to wait for receipt from another donkey" do
-    receipt = Donkey::Receipt.new(Object.new,"key")
-    lambda { @donkey.wait(receipt) }.should raise_error(Donkey::BadReceipt)
-  end
-
   it "signals ticket" do
     mock(@signal_map).signal("key","value")
     @donkey.signal("key","value") 
   end
 
-  it "waits receipts" do
-    keys = %w(1 2 3)
-    receipts = keys.map {|key|
-      Donkey::Receipt.new(@donkey,key)
-    }
-    mock(Donkey::Waiter).new(@signal_map,*keys)
-    @donkey.wait(*receipts)
+  context "#wait" do
+    before do
+      @keys = %w(1 2 3)
+      @receipts = @keys.map {|key|
+        Donkey::Receipt.new(@donkey,key)
+      }
+    end
+    
+    it "waits receipts" do
+      mock(Donkey::Waiter).new(@signal_map,*@keys).yields
+      here = mock!.call.subject
+      @donkey.wait(*@receipts) { here.call }
+    end
+
+    it "raises if attempting to wait for receipt from another donkey" do
+      receipt = Donkey::Receipt.new(Object.new,"key")
+      lambda { @donkey.wait(receipt) { } }.should raise_error(Donkey::BadReceipt)
+    end
+    
+    it "raises if block not given" do
+      lambda { @donkey.wait(@receipts) }.should raise_error(Donkey::NoBlockGiven)
+    end
   end
+  
 
   context "public" do
     it "calls without a tag" do
@@ -188,7 +199,7 @@ describe "Donkey" do
     end
 
     it "raises if bcalling without a block" do
-      lambda { @donkey.bcall("to","data",dummy_opts) }.should raise_error(Donkey::NoBCallBlock)
+      lambda { @donkey.bcall("to","data",dummy_opts) }.should raise_error(Donkey::NoBlockGiven)
     end
 
     it "bcasts" do

@@ -13,7 +13,7 @@ class Donkey
   class BadReceipt < Error
   end
 
-  class NoBCallBlock < Error
+  class NoBlockGiven < Error
   end
 
   %w(uuid rabbit
@@ -79,7 +79,7 @@ reactor actor).each { |file|
   end
 
   def bcall(to,data,opts={},&block)
-    raise NoBCallBlock unless block
+    raise NoBlockGiven unless block
     tag = opts.delete(:tag) || ticketer.next
     fanout.bcall(to,data,tag,opts)
     Donkey::Signaler.new(signal_map,tag,&block)
@@ -106,6 +106,7 @@ reactor actor).each { |file|
   end
   
   def wait(*receipts,&block)
+    raise NoBlockGiven if block.nil?
     raise BadReceipt if receipts.any? { |receipt| receipt.donkey != self }
     keys = receipts.map(&:key)
     Donkey::Waiter.new(signal_map,*keys,&block)

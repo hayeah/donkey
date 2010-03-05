@@ -1,3 +1,5 @@
+# collects the signaled values for the duration of the timeout
+## used by bcall to collect bbacks from the donkey instances in a group.
 class Donkey::Signaler
   class TimeoutAlreadySet < Donkey::Error
   end

@@ -104,7 +104,13 @@ describe "Donkey::Waiter" do
     end
 
     it "calls success callback" do
-      mock(@waiter).success_callback { mock!.call(*@values).subject }
+      callback = mock!.call(*@values).subject
+      stub(@waiter).success_callback { callback }
+      success
+    end
+
+    it "calls success_callback only if it's set" do
+      mock(@waiter).success_callback { nil }
       success
     end
 
@@ -177,8 +183,14 @@ describe "Donkey::Waiter" do
       @waiter.timeout?.should == true
     end
 
-    it "calls timeout block" do
-      mock(@waiter).timeout_callback { mock!.call(@waiter).subject }
+    it "calls timeout callback" do
+      callback = mock!.call(@waiter).subject
+      stub(@waiter).timeout_callback { callback }
+      timeout
+    end
+
+    it "calls timeout_callback only if it's set" do
+      mock(@waiter).timeout_callback { nil }
       timeout
     end
 

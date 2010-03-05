@@ -91,13 +91,13 @@ class Donkey::Waiter
   
   def on_timeout
     complete(:timeout) do
-      timeout_callback.call(self)
+      timeout_callback.call(self) if timeout_callback
     end
   end
 
   def on_success
     complete(:success) do
-      success_callback.call(*values)
+      success_callback.call(*values) if success_callback
     end
   end
 end
