@@ -118,19 +118,28 @@ describe "Donkey" do
     it "waits receipts" do
       mock(Donkey::Waiter).new(@signal_map,*@keys).yields
       here = mock!.call.subject
-      @donkey.wait(*@receipts) { here.call }
+      @donkey.wait(@receipts) { here.call }
     end
 
     it "raises if attempting to wait for receipt from another donkey" do
       receipt = Donkey::Receipt.new(Object.new,"key")
-      lambda { @donkey.wait(receipt) { } }.should raise_error(Donkey::BadReceipt)
+      lambda { @donkey.wait([receipt]) { } }.should raise_error(Donkey::BadReceipt)
     end
     
     it "raises if block not given" do
       lambda { @donkey.wait(@receipts) }.should raise_error(Donkey::NoBlockGiven)
     end
+
+    context "#wait!" do
+      it "does blocking wait" do
+        time = 10
+        mock(Donkey::Waiter).new(@signal_map,*@keys) {
+          mock!.wait!(time).subject
+        }
+        @donkey.wait!(@receipts,time)
+      end
+    end
   end
-  
 
   context "public" do
     it "calls without a tag" do

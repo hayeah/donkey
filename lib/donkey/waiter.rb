@@ -9,6 +9,9 @@ class Donkey::Waiter
 
   class TimeoutAlreadySet < Error
   end
+
+  class CallbackAlreadySet < Error
+  end
   
   attr_reader :pending, :received
   attr_reader :success_callback
@@ -27,6 +30,26 @@ class Donkey::Waiter
     @timer = EM::Timer.new(time) {on_timeout}
     @timeout_callback = block
     self
+  end
+
+  # blocking wait. you gotta call this within a
+  # different thread than the EventMachine thread,
+  # otherwise you'd be fucked.
+  def wait!(time=nil)
+    raise CallbackAlreadySet if success_callback
+    q = Queue.new
+    @success_callback = lambda { |*results|
+      q.enq(results)
+    }
+    self.timeout(time) { q.enq(:timeout) } if time
+    case results=q.pop
+    when :timeout
+      raise Donkey::Timeout
+    when Array
+      return results
+    else
+      raise "wtf?"
+    end
   end
 
   def ready?

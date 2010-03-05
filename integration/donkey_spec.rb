@@ -286,7 +286,7 @@ context "Reactor" do
     react(:on_call) {
       reply(message.data)
     }
-    @donkey.wait(r1,r2) { |v1,v2|
+    @donkey.wait([r1,r2]) { |v1,v2|
       q << [v1,v2]
     }
     2.times { @donkey.public.pop }
@@ -326,6 +326,22 @@ context "Reactor" do
     reactors.each(&:ack)
     sleep(1)
     count.should == 0
+  end
+
+  context "blocking waits" do
+    it "wait!" do
+      react(:on_call) {reply "returned value"}
+      receipt = call("data")
+      @donkey.public.pop
+      @donkey.wait!([receipt]).should == ["returned value"]
+    end
+
+    it "times out on wait!" do
+      react(:on_call) { }
+      receipt = call("data")
+      @donkey.public.pop
+      lambda { @donkey.wait!([receipt],0.5) }.should raise_error(Donkey::Timeout)
+    end
   end
 
   context "topic" do

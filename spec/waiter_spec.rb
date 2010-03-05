@@ -254,4 +254,52 @@ describe "Donkey::Waiter" do
       complete
     end
   end
+
+  context "#wait!" do
+    before do
+      stub(@map).register.with_any_args
+      stub(@map).unregister.with_any_args
+      @timer = Object.new
+      stub(EM::Timer).new { @timer }
+      @queue = Object.new
+      stub(Queue).new { @queue }
+      stub(@queue).pop
+      @waiter = Donkey::Waiter.new(@map,@key1,@key2)
+    end
+    
+    it "raises if success callback is already set" do
+      @waiter = Donkey::Waiter.new(@map,@key1,@key2) { }
+      lambda { @waiter.wait! }.should raise_error(Donkey::Waiter::CallbackAlreadySet)
+    end
+
+    it "raises if timeout callback is already set" do
+      @waiter = Donkey::Waiter.new(@map,@key1,@key2)
+      @waiter.timeout(10) { }
+      lambda { @waiter.wait!(10) }.should raise_error(Donkey::Waiter::TimeoutAlreadySet)
+    end
+
+    it "sets success callback" do
+      mock(@queue).enq(results=[1,2,3])
+      mock(@queue).pop { [] }
+      @waiter.wait!
+      @waiter.success_callback.call(*results)
+    end
+
+    it "sets timeout callback" do
+      mock(@queue).enq(:timeout)
+      mock(@queue).pop { [] }
+      @waiter.wait!(10)
+      @waiter.timeout_callback.call
+    end
+
+    it "returns result" do
+      mock(@queue).pop { [1,2,3] }
+      @waiter.wait!.should == [1,2,3]
+    end
+
+    it "raises timeout" do
+      mock(@queue).pop { :timeout }
+      lambda { @waiter.wait! }.should raise_error(Donkey::Timeout)
+    end
+  end
 end

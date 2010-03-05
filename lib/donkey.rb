@@ -16,6 +16,9 @@ class Donkey
   class NoBlockGiven < Error
   end
 
+  class Timeout < Error
+  end
+
   %w(uuid rabbit
 channel route
 receipt ticketer
@@ -105,11 +108,17 @@ reactor actor).each { |file|
     header.ack
   end
   
-  def wait(*receipts,&block)
+  def wait(receipts,&block)
     raise NoBlockGiven if block.nil?
     raise BadReceipt if receipts.any? { |receipt| receipt.donkey != self }
     keys = receipts.map(&:key)
     Donkey::Waiter.new(signal_map,*keys,&block)
+  end
+
+  def wait!(receipts,timeout=nil)
+    raise BadReceipt if receipts.any? { |receipt| receipt.donkey != self }
+    keys = receipts.map(&:key)
+    Donkey::Waiter.new(signal_map,*keys).wait!(timeout)
   end
 
   # only Reactor should call this

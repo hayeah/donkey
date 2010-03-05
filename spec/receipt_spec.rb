@@ -8,8 +8,14 @@ describe "Donkey::Receipt" do
   end
 
   it "waits" do
-    mock(@donkey).wait(@receipt).yields
+    mock(@donkey).wait([@receipt]).yields
     m = mock!.call.subject
     @receipt.wait { m.call }
+  end
+
+  it "#wait!" do
+    time = 10
+    mock(@donkey).wait!([@receipt],time)
+    @receipt.wait!(10)
   end
 end
