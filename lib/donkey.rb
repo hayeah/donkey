@@ -19,10 +19,11 @@ class Donkey
   %w(uuid rabbit
 channel route
 receipt ticketer
-message reactor
+message 
 signal_map
 signaler
-waiter).each { |file|
+waiter
+reactor actor).each { |file|
     require "donkey/#{file}"
   }
   

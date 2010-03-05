@@ -119,7 +119,44 @@ describe "Donkey" do
   end
 end
 
-context "messages" do
+context "Actor" do
+  include RabbitHelper
+
+  class Actor < Donkey::Actor
+  end
+
+  def act(method,&block)
+    Actor.class_eval do
+      define_method(method,&block)
+    end
+  end
+  
+  before do
+    Donkey.stop
+    Donkey::Rabbit.restart
+    @donkey = Donkey.new("test",Actor)
+    @donkey.create
+  end
+
+  def cast(method,*args)
+    @donkey.cast(@donkey.name,{ "method" => method, "args" => args})
+  end
+  
+  it "calls" do
+    q = Queue.new
+    act(:foo) do |*args|
+      q << [self,"foo",args]
+    end
+    cast("foo",1,2,3)
+    @donkey.public.pop
+    actor, method, args = q.pop
+    actor.should be_a(Donkey::Actor)
+    actor.message.data["method"].should == method
+    actor.message.data["args"].should == args
+  end
+end
+
+context "Reactor" do
   include RabbitHelper
 
   def call(data,opts={})
