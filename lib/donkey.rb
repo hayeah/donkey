@@ -37,19 +37,32 @@ reactor actor).each { |file|
   }
   
   class << self
+    def start(name,reactor=nil,&block)
+      self.new(name,reactor,&block).start
+    end
+    
     def topic(name,opts={})
       Donkey.channel.topic(name,opts)
     end
   end
 
   attr_reader :id, :name, :channel, :reactor, :signal_map, :ticketer
-  def initialize(name,reactor)
+  def initialize(name,reactor=nil,&block)
     @id = Donkey::UUID.generate
-    @reactor = reactor
+    @reactor = reactor || Class.new(Donkey::Reactor,&block)
     @name = name
     @channel = Donkey.channel
     @signal_map = Donkey::SignalMap.new
     @ticketer = Donkey::Ticketer.new
+  end
+
+  def start
+    self.create
+    self.public.subscribe
+    self.private.subscribe
+    self.topic.subscribe
+    self.fanout.subscribe
+    self
   end
 
   attr_reader :public, :private, :topic, :fanout
