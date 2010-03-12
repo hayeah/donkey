@@ -1,11 +1,16 @@
 class Donkey::Reactor
+  require 'forwardable'
+  extend Forwardable
+
+  def_delegators :@donkey, :call, :cast, :bcall, :bcast, :event
+  
   class NoAckNeeded < Donkey::Error
   end
   
   def self.process(donkey,header,message,ack)
     self.new(donkey,header,message,ack).process
   end
-
+  
   attr_reader :donkey, :header, :message, :ack
   def initialize(donkey,header,message,ack)
     @donkey = donkey
