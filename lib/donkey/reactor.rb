@@ -6,8 +6,9 @@ class Donkey::Reactor
   
   class NoAckNeeded < Donkey::Error
   end
-  
-  def self.process(donkey,header,message,ack)
+
+  # seems like a bad idea to have ack as an argument to initialize...
+  def self.process(donkey,header,message,ack=false)
     self.new(donkey,header,message,ack).process
   end
   
