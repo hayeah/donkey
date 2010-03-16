@@ -13,7 +13,7 @@ class Donkey::Reactor
   end
   
   attr_reader :donkey, :header, :message, :ack
-  def initialize(donkey,header,message,ack)
+  def initialize(donkey,header,message,ack=false)
     @donkey = donkey
     @header = header
     @message = message
