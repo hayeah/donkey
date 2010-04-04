@@ -41,6 +41,8 @@ class Donkey::Reactor
         donkey.signal(header.message_id,message.data)
       when Donkey::Message::BCast
         on_bcast
+      else
+        raise "fubared"
       end
     rescue => error
       begin
