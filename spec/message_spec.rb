@@ -1,3 +1,5 @@
+require 'spec/spec_helper'
+
 describe "Donkey::Message" do
   it "raises if a class has no associated tag" do
     new_message_class = Class.new(Donkey::Message)
@@ -5,7 +7,7 @@ describe "Donkey::Message" do
   end
 
   it "raises if a tag has no associated class" do
-    lambda { Donkey::Message.tag_to_class("fwajelkfjlfla") }.should raise_error
+    lambda { Donkey::Message.tag_to_class(2313) }.should raise_error(Donkey::Message::DecodeError)
   end
 
   context ".decode" do
@@ -13,45 +15,62 @@ describe "Donkey::Message" do
       lambda { Donkey::Message.decode("junk data") }.should raise_error(Donkey::Message::DecodeError)
     end
   end
-
-  context "Message" do
-    before(:each) do
-      msg_klass = Class.new(Donkey::Message)
-      stub(msg_klass).tag { "test_tag" }
-      @msg = msg_klass.new("data")
-    end
-
-    it "tags data to indicate type" do
-      @msg.tagged_data.should be_an(Array)
-      @msg.tagged_data[0].should == "test_tag"
-      @msg.tagged_data[1].should == "data"
-    end
-
-    it "encodes data" do
-      mock(@msg).tagged_data { "tagged-data" }
-      mock(BERT).encode("tagged-data") { "bert" }
-      @msg.encode.should == "bert"
-    end
-  end
-  
   
   context "Call" do
-    before(:each) do
-      @call = Donkey::Message::Call.new(@data = "data")
+    let(:msg) {
+      Donkey::Message::Call.new(@data = "data")
+    }
+
+    subject { msg }
+    
+    it "has tag" do
+      msg.tag.should == ?0
     end
 
-    it "has tag" do
-      @call.tag.should == "call"
+    it "encodes" do
+      msg.encode.should == "0#{@data}"
     end
   end
 
-  context "Cast" do
-    before(:each) do
-      @msg = Donkey::Message::Cast.new(@data="data")
+  describe "Cast" do
+    let(:msg) {
+      Donkey::Message::Cast.new(@data="data")
+    }
+
+    subject { msg }
+    
+    it "has tag" do
+      msg.tag.should == ?1
     end
 
+    it "encodes" do
+      msg.encode.should == "1#{@data}"
+    end
+  end
+
+  describe "Back" do
+    let(:msg) {
+      Donkey::Message::Back.new(@data="data")
+    }
+
+    subject { msg }
+    
     it "has tag" do
-      @msg.tag.should == "cast"
+      msg.tag.should == ?2
+    end
+
+    it "encodes" do
+      msg.encode.should == "2#{@data}"
+    end
+
+    def decode(payload)
+      Donkey::Message.decode(payload)
+    end
+
+    it "decodes" do
+      msg = Donkey::Message.decode("2data")
+      msg.should be_a(Donkey::Message::Back)
+      msg.data.should == "data"
     end
   end
 end

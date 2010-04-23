@@ -44,6 +44,13 @@ reactor actor).each { |file|
     def topic(name,opts={})
       Donkey.channel.topic(name,opts)
     end
+
+    # TODO
+    def create_topic
+    end
+
+    def delete_topic
+    end
   end
 
   attr_reader :id, :name, :channel, :reactor, :signal_map, :ticketer
@@ -57,6 +64,8 @@ reactor actor).each { |file|
   end
 
   def start
+    raise "already started" if @started
+    @started = true
     self.create
     self.public.subscribe
     self.private.subscribe

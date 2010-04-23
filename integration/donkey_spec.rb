@@ -268,7 +268,7 @@ context "Reactor" do
   end
 
   it "times out" do
-    receipt = @donkey.call(@donkey.name,:timeout)
+    receipt = @donkey.call(@donkey.name,"should timeout")
     q = Queue.new
     waiter = receipt.wait { |r|
       # do nothing
@@ -280,8 +280,8 @@ context "Reactor" do
   end
   
   it "waits multiple receipts" do
-    r1 = call(1)
-    r2 = call(2)
+    r1 = call("1")
+    r2 = call("2")
     q = Queue.new
     react(:on_call) {
       reply(message.data)
@@ -290,7 +290,7 @@ context "Reactor" do
       q << [v1,v2]
     }
     2.times { @donkey.public.pop }
-    q.pop.should == [1,2]
+    q.pop.should == ["1","2"]
   end
 
   it "subscribes" do
@@ -298,7 +298,7 @@ context "Reactor" do
     react(:on_cast) {
       q << self
     }
-    rs = 10.times.map { |i| cast(i) }
+    10.times { |i| cast("a") }
     sleep(1)
     count.should == 10
     
@@ -308,7 +308,7 @@ context "Reactor" do
     reactors.each { |reactor|
       reactor.ack?.should == false
     }
-    reactors.map { |r| r.message.data }.should == (0..9).to_a
+    reactors.map { |r| r.message.data }.should == 10.times.map { "a" }
   end
 
   it "subscribes with ack" do
@@ -366,12 +366,12 @@ context "Reactor" do
       react(:on_event) {q << self}
       @donkey.listen(exchange,"key1")
       @donkey.listen(exchange,"key2")
-      @donkey.event(exchange,"key1",1)
-      @donkey.event(exchange,"key2",2)
+      @donkey.event(exchange,"key1","1")
+      @donkey.event(exchange,"key2","2")
       count(@donkey.topic.queue.name).should == 2
       2.times { @donkey.topic.pop }
-      2.times.map { q.pop.message.data }.sort.should == [1,2]
-      @donkey.event(exchange,"key3",1)
+      2.times.map { q.pop.message.data }.sort.should == ["1","2"]
+      @donkey.event(exchange,"key3","2")
       sleep(1)
       count(@donkey.topic.queue.name).should == 0
     end
