@@ -95,7 +95,7 @@ class Donkey::Message
     # take advantage of sharing.
     payload = ""
     payload << tag
-    payload << data
+    payload << data.to_s
     payload
   end
 end

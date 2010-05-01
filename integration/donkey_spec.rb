@@ -119,42 +119,42 @@ describe "Donkey" do
   end
 end
 
-context "Actor" do
-  include RabbitHelper
+# context "Actor" do
+#   include RabbitHelper
 
-  class Actor < Donkey::Actor
-  end
+#   class Actor < Donkey::Actor
+#   end
 
-  def act(method,&block)
-    Actor.class_eval do
-      define_method(method,&block)
-    end
-  end
+#   def act(method,&block)
+#     Actor.class_eval do
+#       define_method(method,&block)
+#     end
+#   end
   
-  before do
-    Donkey.stop
-    Donkey::Rabbit.restart
-    @donkey = Donkey.new("test",Actor)
-    @donkey.create
-  end
+#   before do
+#     Donkey.stop
+#     Donkey::Rabbit.restart
+#     @donkey = Donkey.new("test",Actor)
+#     @donkey.create
+#   end
 
-  def cast(method,*args)
-    @donkey.cast(@donkey.name,{ "method" => method, "args" => args})
-  end
+#   def cast(method,*args)
+#     @donkey.cast(@donkey.name,{ "method" => method, "args" => args})
+#   end
   
-  it "calls" do
-    q = Queue.new
-    act(:foo) do |*args|
-      q << [self,"foo",args]
-    end
-    cast("foo",1,2,3)
-    @donkey.public.pop
-    actor, method, args = q.pop
-    actor.should be_a(Donkey::Actor)
-    actor.message.data["method"].should == method
-    actor.message.data["args"].should == args
-  end
-end
+#   it "calls" do
+#     q = Queue.new
+#     act(:foo) do |*args|
+#       q << [self,"foo",args]
+#     end
+#     cast("foo",1,2,3)
+#     @donkey.public.pop
+#     actor, method, args = q.pop
+#     actor.should be_a(Donkey::Actor)
+#     actor.message.data["method"].should == method
+#     actor.message.data["args"].should == args
+#   end
+# end
 
 context "Reactor" do
   include RabbitHelper
@@ -197,7 +197,7 @@ context "Reactor" do
   end
 
   it "pops" do
-    cast(1)
+    cast("1")
     q = Queue.new
     react(:on_cast) {
       q << self
@@ -207,11 +207,11 @@ context "Reactor" do
     reactor = q.pop
     count.should == 0
     reactor.ack?.should be_false
-    reactor.message.data.should == 1
+    reactor.message.data.should == "1"
   end
   
   it "pops with ack" do
-    cast(1)
+    cast("1")
     q = Queue.new
     react(:on_cast) {
       q << self
@@ -228,21 +228,21 @@ context "Reactor" do
   end
   
   it "casts to itself" do
-    @donkey.cast(@donkey.name,:input)
+    @donkey.cast(@donkey.name,"input")
     q = Queue.new
     react(:on_cast) {
       q << message.data
     }
     @donkey.public.pop
-    q.pop.should == :input
+    q.pop.should == "input"
   end
   
   it "calls itself" do
-    receipt = @donkey.call(@donkey.name,:input)
+    receipt = @donkey.call(@donkey.name,"input")
     q = Queue.new
     react(:on_call) {
       q << self
-      reply(:output)
+      reply("output")
     }
     # @donkey.wait(receipt) { |output| q << output }
     waiter = receipt.wait { |output| q << output }
@@ -254,14 +254,14 @@ context "Reactor" do
     reactor = q.pop
     msg = reactor.message
     msg.should be_a(Donkey::Message::Call)
-    msg.data.should == :input
+    msg.data.should == "input"
     reactor.header.message_id.should == receipt.key
 
-    q.pop.should == :output
+    q.pop.should == "output"
     waiter.done?.should == true
     waiter.success?.should == true
     waiter.pending.should be_empty
-    waiter.value(receipt.key).should == :output
+    waiter.value(receipt.key).should == "output"
 
     # waiter_map should not keep references to completed waiters
     @donkey.signal_map.map.should be_empty
