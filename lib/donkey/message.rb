@@ -1,6 +1,4 @@
 class Donkey::Message
-  require 'bert'
-
   class DecodeError < Donkey::Error
   end
 
